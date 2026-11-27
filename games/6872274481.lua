@@ -7257,6 +7257,8 @@ Run(function()
 	local SelfLag: number = 0.09
 	local SelfLagLow: number = 0.07
 	local SelfLagHigh: number = 0.11
+	local MoveComp
+	local PingLag: number = SelfLag
 	local ClaimLag: number = 0.05
 	local ServerReach: number = 3.6
 	local RangeMargin: number = 0.4
@@ -7317,9 +7319,15 @@ Run(function()
 	end
 	
 	local function UpdateSelfReference(Now: number, Fallback: Vector3)
-	    SelfReference.Low = GetTrailPosition(Now - SelfLagLow, Fallback)
-	    SelfReference.High = GetTrailPosition(Now - SelfLagHigh, Fallback)
-	    SelfReference.Claim = GetTrailPosition(Now - SelfLag, Fallback)
+	    local Lag: number, Low: number, High: number = SelfLag, SelfLagLow, SelfLagHigh
+	    if MoveComp and MoveComp.Enabled then
+	        PingLag += (math.clamp(LocalPlayer:GetNetworkPing(), 0.03, 0.2) - PingLag) * 0.05
+	        Lag = PingLag
+	        Low, High = Lag - 0.02, Lag + 0.02
+	    end
+	    SelfReference.Low = GetTrailPosition(Now - Low, Fallback)
+	    SelfReference.High = GetTrailPosition(Now - High, Fallback)
+	    SelfReference.Claim = GetTrailPosition(Now - Lag, Fallback)
 	end
 	
 	local function GetLagOffset(Velocity: Vector3, Lag: number): Vector3
@@ -8328,6 +8336,11 @@ Run(function()
 	    SaveHighHitreg(self, Data)
 	    Data[self.Name].Version = 1
 	end
+	MoveComp = Killaura:CreateToggle({
+	    Name = "Move compensation",
+	    Default = true,
+	    Tooltip = "Matches the position sent with each hit to your real ping so moving hits register like standing hits"
+	})
 	Hitreg = {Value = "Stable"}
 	MaxTargets = Killaura:CreateSlider({
 	    Name = "Max targets",
