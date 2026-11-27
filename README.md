@@ -23,7 +23,7 @@ The script does not contain a GitHub token. Git will use your existing credentia
 
 ## Local profiles
 
-The updater uses a bounded eight-worker download queue with per-file retries, then waits for every required file before launching the UI. Source files refresh when `version.txt` changes; existing `profiles/` are preserved during updates. First-time installs receive the included default profiles.
+The updater refreshes source files when `version.txt` changes and keeps existing files in `profiles/` intact. First-time installs receive the included default profiles.
 
 ## Removed hosted services
 

@@ -4189,7 +4189,7 @@ Run(function()
 	    Suffix = function(Val: number)
 	        return Val == 1 and "hit / 10s" or "hits / 10s"
 	    end,
-	    Tooltip = "Target spacing for manual and autoclicker swings; actual confirmations still depend on server cooldown and network conditions."
+	    Tooltip = "Target interval for manual swings; actual hits remain subject to the game cooldown and request budget"
 	})
 end)
 
@@ -5027,8 +5027,9 @@ Run(function()
 	                                end
 	                                local Remaining: number = math.max(LastHit + LockFloor - tick(), LockTarget - os.clock())
 	                                if Remaining > 0 and Remaining < math.min(math.max(LockFrame, 0.005), 0.25) then
-	                                	task.wait(Remaining)
-	                                	Remaining = math.max(LastHit + LockFloor - tick(), LockTarget - os.clock())
+	                                    local Finish: number = os.clock() + Remaining
+	                                    repeat until os.clock() >= Finish
+	                                    Remaining = 0
 	                                end
 	                                Ready = Remaining <= 0
 	                            end
@@ -7268,18 +7269,30 @@ Run(function()
 	local BurstShots, BurstWait = 0, 0
 	local FuryScale: number = 1 - (bedwars.BlackMarketeerBalance.FURY_POTION_ATTACK_SPEED_MULTIPLIER - 1)
 	local SwordEffect: (...any) -> ...any = rawget(rawget(getmetatable(bedwars.SwordController), "__index"), "playSwordEffect")
-	local ScanInterval: number = 1 / 75
+	local ScanInterval: number = 1 / 30
 	local FlatScale: Vector3 = Vector3.new(1, 0, 1)
 	local ParkedPosition: Vector3 = Vector3.new(9e9, 9e9, 9e9)
 	local ParticleShown: {[Part]: boolean} = setmetatable({}, {__mode = "k"})
 	
+	local ItemDropsFolder: Instance? = workspace:FindFirstChild("ItemDrops")
+	local ItemDropsRefresh: number = 0
+	local function GetItemDropsFolder(): Instance?
+	    local Now: number = os.clock()
+	    if Now >= ItemDropsRefresh or (ItemDropsFolder and not ItemDropsFolder.Parent) then
+	        ItemDropsFolder = workspace:FindFirstChild("ItemDrops")
+	        ItemDropsRefresh = Now + 2
+	    end
+	    return ItemDropsFolder
+	end
+
 	local function IsCombatTarget(Ent): boolean
 	    local Character: Instance? = Ent.Character
-	    local Drops: Instance? = workspace:FindFirstChild("ItemDrops")
+	    local RootPart: BasePart? = Ent.RootPart
+	    local Drops: Instance? = GetItemDropsFolder()
 	    return Character ~= nil and Character:IsA("Model") and Character.Parent ~= nil
-	        and Ent.RootPart ~= nil and Ent.RootPart:IsDescendantOf(Character)
+	        and RootPart ~= nil and RootPart:IsDescendantOf(Character)
 	        and Ent.Health > 0 and Ent.Targetable and Entity.isVulnerable(Ent)
-	        and not Character:HasTag("ItemDrop") and not Ent.RootPart:HasTag("ItemDrop")
+	        and not Character:HasTag("ItemDrop") and not RootPart:HasTag("ItemDrop")
 	        and not (Drops and Character:IsDescendantOf(Drops))
 	end
 	
@@ -7457,8 +7470,11 @@ Run(function()
 	            GhostDelay, GhostHold, GhostStep, GhostCount, GhostWindow = 0, 0, 0, 0, 0
 	            RetryAt, RetryUntil = 0, 0
 	            table.clear(GhostPending)
+	            table.clear(HitPending)
 	            table.clear(TransitSamples)
 	            table.clear(TransitRecent)
+	            HitDeadline, TransitMin, ConfirmMin = 0, nil, nil
+	            OutlierStreak = 0
 	            HitregTiming.Spread = 0
 	            HitregTiming.Peak = 0
 	            HitregTiming.PeakUntil = 0
@@ -7489,7 +7505,7 @@ Run(function()
 	            bedwars.SwordController.playSwordEffect = SwingHook
 	
 	            LockTarget, LockSent, LockStamp, LockSearch, LockOffset = 0, 0, 0, true, nil
-	            LockSpace = HitregTiming.LockTick * 17 + HitregTiming.LockDrift
+	            LockSpace = SwordTiming.HighSpacing
 	            table.clear(LockSends)
 	
 	            Killaura:Clean(vapeEvents.EntityDamageEvent.Event:Connect(function(DamageTable)
@@ -7509,7 +7525,7 @@ Run(function()
 	                                LockOffset = Offset - (LockSearch and Extra > 0 and Extra * HitregTiming.LockTick or 0)
 	                                if Extra == 1 and LockSearch and not Spike then
 	                                    LockSearch = false
-	                                    LockSpace = HitregTiming.LockTick * 17
+	                                    LockSpace = SwordTiming.HighSpacing
 	                                    LockTarget += HitregTiming.LockTick - HitregTiming.LockDrift * 0.5 - HitregTiming.LockPhase
 	                                elseif Extra >= 1 and Extra <= 45 then
 	                                    LockTarget += Extra * HitregTiming.LockTick - (LockSearch and 0 or HitregTiming.LockNudge)
@@ -7768,7 +7784,8 @@ Run(function()
 	                                Players = Targets.Players.Enabled,
 	                                NPCs = Targets.NPCs.Enabled,
 	                                Priority = Targets.Priority.Value,
-	                                Sort = sortmethods[Sort.Value]
+	                                Sort = sortmethods[Sort.Value],
+	                                Limit = math.max(8, MaxTargets.Value + 3)
 	                            })
 	                            ScanClock = os.clock()
 	                        end
@@ -7785,7 +7802,8 @@ Run(function()
 	                            local DisplayName: string = SwordMeta and SwordMeta.displayName or ""
 	                            local FuryMultiplier: number = bedwars.StatusEffectUtil:isActive(LocalPlayer.Character, "fury_potion") and FuryScale or 1
 	                            local SwordSpeed: number = FixedSpeeds[Sword.tool.Name] or SwordMeta and SwordMeta.sword and SwordMeta.sword.attackSpeed or 0.3
-	                            local Spacing, SpeedScale, GapMin, AttackCooldown, Stock = SwordTiming.Calculate(SwordSpeed, FuryMultiplier, HighHitreg.Enabled, HitBudget)
+	                            local RequestedHits: number? = HighHitreg.Enabled and SwordTiming.HighHits or nil
+	                            local Spacing, SpeedScale, GapMin, AttackCooldown, Stock = SwordTiming.Calculate(SwordSpeed, FuryMultiplier, HighHitreg.Enabled, HitBudget, RequestedHits)
 	                            local Quantized: boolean = Stock and HighHitreg.Enabled and Hitreg.Value ~= "Burst" and HitregTiming.AlignFrames and FrameTime > 1 / 30
 	                            local Variation: number = math.max(HitregTiming.Spread, tick() < HitregTiming.PeakUntil and HitregTiming.Peak or 0)
 	                            local Margin: number = 0
@@ -7802,12 +7820,6 @@ Run(function()
 	                            end
 	                            if Stock and HighHitreg.Enabled then
 	                                GapMin = math.max(GapMin + GhostDelay + Margin, AttackSpeed.Value)
-	                            end
-	                            local Band: number = (HighHitreg.Enabled and 10 / 36 or 10 / 33) * SpeedScale
-	                            local BandFloor: number = math.max(HighHitreg.Enabled and 10 / 36 or 10 / 34, CleanFloor) * SpeedScale
-	                            local Frames: number = math.floor(Band / FrameTime)
-	                            if Stock and (math.ceil(Spacing / FrameTime) * FrameTime) > Band and (Frames * FrameTime) >= BandFloor then
-	                                Spacing = math.max((Frames * FrameTime) - (FrameTime * 0.5), GapFloor * SpeedScale)
 	                            end
 	                            local Precise: boolean = Stock and HighHitreg.Enabled and Hitreg.Value ~= "Burst" and not Quantized
 	                            local Reach: number = getReach(Sword.tool)
@@ -7908,18 +7920,19 @@ Run(function()
 	                                        LockStamp = 0
 	                                        LockOffset = nil
 	                                        LockSearch = true
-	                                        LockSpace = HitregTiming.LockTick * 17 + HitregTiming.LockDrift
+	                                        LockSpace = SwordTiming.HighSpacing
 	                                        LockTarget = LockSent + HitregTiming.LockGhost
 	                                    end
+	                                    LockSpace = math.max(Spacing, HitBudget, AttackCooldown)
 	                                    if LockTarget > 0 and os.clock() - LockTarget > 0.05 then
 	                                        if os.clock() - LockTarget < 10 then
 	                                            LockTarget += math.ceil((os.clock() - LockTarget) / HitregTiming.LockTick) * HitregTiming.LockTick
 	                                        else
 	                                            LockTarget, LockStamp, LockSearch, LockOffset = 0, 0, true, nil
-	                                            LockSpace = HitregTiming.LockTick * 17 + HitregTiming.LockDrift
+	                                            LockSpace = SwordTiming.HighSpacing
 	                                        end
 	                                    end
-	                                    Deadline = math.max(LastHit + HitregTiming.LockFloor, tick() + LockTarget - os.clock())
+	                                    Deadline = math.max(Deadline, LastHit + HitregTiming.LockFloor, tick() + LockTarget - os.clock())
 	                                end
 	                                local Retry: boolean = false
 	                                if RetryAt > 0 and tick() >= RetryAt then
@@ -7937,15 +7950,14 @@ Run(function()
 	                                end
 	                                if LatencyGuard then
 	                                    local Pending = HitPending[#HitPending]
-	                                    if Pending and #HitPending < 3 and ConfirmMin and (ConfirmMin + FrameTime) < HitDelay and Pending.sent == LastHit then
-	                                        Deadline = math.max(Deadline, LastHit + HitDelay + 0.04)
+	                                    if Pending and #HitPending >= 3 and ConfirmMin and (ConfirmMin + FrameTime) > HitDelay and Pending.sent == LastHit then
+	                                        Deadline = math.max(Deadline, LastHit + ConfirmMin + FrameTime)
 	                                        Waiting = true
 	                                    end
 	                                end
 	                                local Remaining: number = Deadline - tick()
-	                                if Precise and not Waiting and Remaining > 0 and Remaining < math.min(Locked and math.max(FrameTime, FrameStep) or math.min(FrameTime, FrameStep), 0.25) then
-	                                	-- Yield to the scheduler instead of busy-waiting on os.clock().
-	                                	task.wait(Remaining)
+	                                if Precise and not Waiting and Remaining > 0 and Remaining < math.min(FrameTime, FrameStep, 0.25) then
+	                                    task.wait(Remaining)
 	                                end
 	                                if tick() >= Deadline then
 	                                    local CurrentRoot: BasePart? = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
