@@ -1,8 +1,8 @@
 local SwordTiming = {
     SafeSpacing = 0.296,
-    HighSpacing = 0.2925,
-    HitFloor = 0.285,
-    GapFloor = 0.2915,
+    HighSpacing = 10 / 36,  -- ~0.2778, supports up to 36 hits/10s
+    HitFloor = 0.2778,
+    GapFloor = 0.2778,
     ArrivalFloor = 0.2747,
     CooldownCorrection = (0.017999999225139618 / 10) + 0.013412
 }
@@ -18,7 +18,7 @@ function SwordTiming.Calculate(Speed: number, Fury: number, High: boolean, Budge
     local Stock: boolean = Speed == 0.3
     local Normal: number = High and SwordTiming.HighSpacing or SwordTiming.SafeSpacing
     local Spacing: number = Stock and Normal or WeaponSpacing[Speed] or Speed + 0.03
-    if Hits and Hits ~= 35 then Spacing = math.max(Spacing, 10 / math.max(Hits - 1, 1)) end
+    if Hits and Hits ~= 35 then Spacing = math.max(Spacing, 10 / math.max(Hits, 1)) end
     Spacing = math.max(Spacing * Fury, Budget)
     local Scale: number = Spacing / (Stock and Normal or SwordTiming.SafeSpacing)
     local Gap: number = (Scale < 1 and SwordTiming.GapFloor or SwordTiming.HitFloor) * Scale

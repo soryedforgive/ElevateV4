@@ -4758,7 +4758,7 @@ Run(function()
 	local TinkerSwing: number = 0
 	local Session = nil
 	local HitBudget, HitSpacing, GapFloor = 0.2, 0.296, 0.296
-	local SafeSpacing, SafeFloor, HighSpacing, HighFloor = 0.296, 0.296, 0.2925, 0.2925
+	local SafeSpacing, SafeFloor, HighSpacing, HighFloor = 0.296, 0.296, 10 / 36, 10 / 36
 	local WeaponSpacing: {[number]: number} = {
 	    [0.21] = 0.229,
 	    [0.25] = 0.249,
@@ -7804,8 +7804,8 @@ Run(function()
 	                            if Stock and HighHitreg.Enabled then
 	                                GapMin = math.max(GapMin + GhostDelay + Margin, AttackSpeed.Value)
 	                            end
-	                            local Band: number = (HighHitreg.Enabled and 10 / 34 or 10 / 33) * SpeedScale
-	                            local BandFloor: number = math.max(HighHitreg.Enabled and 10 / 35 or 10 / 34, CleanFloor) * SpeedScale
+	                            local Band: number = (HighHitreg.Enabled and 10 / 36 or 10 / 33) * SpeedScale
+	                            local BandFloor: number = math.max(HighHitreg.Enabled and 10 / 36 or 10 / 34, CleanFloor) * SpeedScale
 	                            local Frames: number = math.floor(Band / FrameTime)
 	                            if Stock and (math.ceil(Spacing / FrameTime) * FrameTime) > Band and (Frames * FrameTime) >= BandFloor then
 	                                Spacing = math.max((Frames * FrameTime) - (FrameTime * 0.5), GapFloor * SpeedScale)
@@ -7945,9 +7945,8 @@ Run(function()
 	                                end
 	                                local Remaining: number = Deadline - tick()
 	                                if Precise and not Waiting and Remaining > 0 and Remaining < math.min(Locked and math.max(FrameTime, FrameStep) or math.min(FrameTime, FrameStep), 0.25) then
-	                                    -- Yield to Roblox instead of spinning on the client thread.
-	                                    -- The next loop iteration re-checks the deadline without consuming a full CPU core.
-	                                    task.wait(Remaining)
+	                                    local Finish: number = os.clock() + Remaining
+	                                    repeat until os.clock() >= Finish
 	                                end
 	                                if tick() >= Deadline then
 	                                    local CurrentRoot: BasePart? = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
@@ -8136,7 +8135,7 @@ Run(function()
 	                            if GhostCount > (Recovery and 0 or 1) and tick() > GhostStep then
 	                                GhostStep = tick() + 1
 	                                GhostHold = tick() + (Recovery and HitregTiming.MarginHold or HighHitreg.Enabled and 2 or 10)
-	                                GhostDelay = math.min(GhostDelay + (Recovery and HitregTiming.RecoveryStep or HighHitreg.Enabled and 0.001 or 0.003), Recovery and HitregTiming.RecoveryCap or HighHitreg.Enabled and (10 / 34 - CleanFloor) or 0.1)
+	                                GhostDelay = math.min(GhostDelay + (Recovery and HitregTiming.RecoveryStep or HighHitreg.Enabled and 0.001 or 0.003), Recovery and HitregTiming.RecoveryCap or HighHitreg.Enabled and (10 / 36 - CleanFloor) or 0.1)
 	                            end
 	                        elseif GhostDelay > 0 and tick() > GhostHold then
 	                            GhostHold = tick() + (Recovery and HitregTiming.MarginHold or HighHitreg.Enabled and 2 or 10)
