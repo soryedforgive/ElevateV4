@@ -4757,8 +4757,8 @@ Run(function()
 	local LastEffect, LastAttack, LastSwing, OldSwing, SwingHook = 0, 0, 0, nil, nil
 	local TinkerSwing: number = 0
 	local Session = nil
-	local HitBudget, HitSpacing, GapFloor = 0.2, 0.296, 0.296
-	local SafeSpacing, SafeFloor, HighSpacing, HighFloor = 0.296, 0.296, 10 / 36, 10 / 36
+	local HitBudget, HitSpacing, GapFloor = 0.18, 10/36, 10/36
+	local SafeSpacing, SafeFloor, HighSpacing, HighFloor = 0.285, 0.270, 10 / 36, 10 / 36
 	local WeaponSpacing: {[number]: number} = {
 	    [0.21] = 0.229,
 	    [0.25] = 0.249,
@@ -5040,7 +5040,7 @@ Run(function()
 	                                local SelfPosition: Vector3 = LocalPosition + Direction * math.max(Delta.Magnitude - (getReach(Sword.tool) - 0.001), 0)
 	                                bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
 	                                LastAttack = tick()
-	                                SwingCooldown = math.max(SwingCooldown + HitDelay, tick())
+	                                SwingCooldown = tick() + math.max(HitDelay or SwingDelay or 0.028, 0.028))
 	                                LastHit = tick()
 	
 	                                if (not Airborne) or RandomGenerator:NextNumber(0, 100) <= AirHits:GetRandomValue() then
@@ -7223,8 +7223,8 @@ Run(function()
 	    LockNudge = 0.0005,
 	    LockPhase = 0.0085,
 	    LockEdge = 0.0035,
-	    LockFloor = 0.25,
-	    LockGhost = 0.3,
+	    LockFloor = 0.08,
+	    LockGhost = 0.04,
 	    LockPing = 0.2
 	}
 	local FixedSpeeds: {[string]: number} = {
@@ -7251,7 +7251,7 @@ Run(function()
 	local ProjectileRemote = bedwars.Handler:Get("ProjectileFire")
 	local FastHitPending, LastShot = nil, 0
 	local ArrivalFloor: number = SwordTiming.ArrivalFloor
-	local HitBudget, HitFloor, GapFloor = 0.2, SwordTiming.HitFloor, SwordTiming.GapFloor
+	local HitBudget, HitFloor, GapFloor = 0.18, SwordTiming.HitFloor, SwordTiming.GapFloor
 	local CleanFloor: number = SwordTiming.HighSpacing
 	local TargetLag: number = 0.12
 	local SelfLag: number = 0.09
