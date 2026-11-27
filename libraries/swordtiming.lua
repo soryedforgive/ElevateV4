@@ -56,4 +56,19 @@ function SwordTiming.Calculate(Speed: number, Fury: number, High: boolean, Budge
     return Spacing, Scale, Gap, Cooldown, Stock
 end
 
+
+-- Compatibility interface used by the supplied BedWars Killaura module.
+-- Mode hit counts are the values shown in that module's Hitreg tooltip.
+SwordTiming.Modes = {
+    Legit = {Hits = 33, Budget = true},
+    High = {Hits = 34, Budget = true},
+    ["Extra High"] = {Hits = 35, Budget = true},
+    Max = {Hits = 36, Budget = true}
+}
+
+function SwordTiming.Spacing(Hits: number, Speed: number): number
+    local Spacing = SwordTiming.Calculate(Speed, 1, true, 0, Hits)
+    return Spacing
+end
+
 return SwordTiming

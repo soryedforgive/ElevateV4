@@ -7128,24 +7128,26 @@ Run(function()
 end)
 
 Run(function()
+	local LocalPlayer = lplr
+	local Entity = entitylib
+	local Camera = gameCamera
+	local TweenService = tweenService
+	local RunService = runService
+	local UserInputService = inputService
+	local PredictionLib = prediction
+	local TargetInfo = targetinfo
+	local getTinkerMount = bedwars.getTinkerMount
+	local watchProjectile = bedwars.watchProjectile
 	local SwordTiming = vape.Libraries.swordtiming
 	local Killaura
 	local Targets
 	local Sort
 	local FastHits
-	local UseSophia
-	local UseWhim
-	local UseNazar
-	local UseUmeko
-	local UseLasso
+	local AlsoUse
 	local SwingRange
 	local AttackRange
 	local SwingTime
-	local AttackSpeed
-	local HighHitreg
-	local Hitreg
-	local BurstHits
-	local BurstDelay
+	local HitregMode
 	local AngleSlider
 	local AirHits
 	local MaxTargets
@@ -7171,6 +7173,8 @@ Run(function()
 	local AnimationTween
 	local Limit
 	local LegitAura
+	local AutoTool
+	local AutoToolRange
 	local Whitelist
 	local Legit
 	local FireRate
@@ -7181,78 +7185,111 @@ Run(function()
 	local LastEffect, LastAttack, OldSwing, SwingHook = 0, 0, nil, nil
 	local EffectSwing: number = 0
 	local Session = nil
-	local GhostDelay, GhostHold, GhostStep = 0, 0, 0
-	local GhostCount, GhostWindow = 0, 0
-	local GhostPending: {number} = {}
-	local HitPending = {}
-	local HitDeadline, TransitMin, ConfirmMin = 0, nil, nil
-	local RetryAt, RetryUntil: number = 0, 0
-	local TransitSamples: {number} = {}
-	local TransitRecent: {number} = {}
-	local TargetStamps = setmetatable({}, {__mode = "k"})
-	local OutlierStreak: number = 0
-	local HitregTiming = {
-	    Window = 8,
-	    FloorWindow = 32,
-	    ExcessCap = 0.25,
-	    FloorSlack = 0.01,
-	    RetryMargin = 0.05,
-	    RetryCap = 0,
-	    RetryBudget = 0.8,
-	    RetryHold = 10,
-	    HoldCap = 0.18,
-	    OutlierSamples = 4,
-	    OutlierGap = 0.1,
-	    Spread = 0,
-	    Noise = 0.03,
-	    Margin = 0,
-	    AlignFrames = false,
-	    MatchTransit = true,
-	    Peak = 0,
-	    PeakUntil = 0,
-	    MarginHold = 2,
-	    MinimumMargin = 0,
-	    ColdMargin = 0,
-	    BootSamples = 0,
-	    FrameBootSamples = 2,
-	    LatencyScale = 1,
-	    RecoveryCap = 0,
-	    RecoveryStep = 0.015,
-	    LockTick = 1 / 60,
-	    LockDrift = 0.004,
-	    LockNudge = 0.0005,
-	    LockPhase = 0.0085,
-	    LockEdge = 0.0035,
-	    LockFloor = 0.25,
-	    LockGhost = 0.3,
-	    LockPing = 0.2
-	}
-	local FixedSpeeds: {[string]: number} = {
-	    frosty_hammer = 0.3
-	}
-	local LockFrame: number = 0
-	local LockOffset: number?
-	local LockTarget: number = 0
-	local LockSpace: number = 0
-	local LockSent: number = 0
-	local LockStamp: number = 0
-	local LockSends: {{Srv: number, Done: boolean}} = {}
-	local LockSearch: boolean = true
-	local function GetHitLifetime(): number
-	    return math.max(2, LocalPlayer:GetNetworkPing() * 2 + 0.3, (ConfirmMin or 0) + HitregTiming.Spread + 0.5)
+	local ToolSwap = {At = 0}
+
+	local function SwapToSword()
+		local Now: number = os.clock()
+		if ToolSwap.Busy or Now < ToolSwap.At or not Entity.isAlive then return end
+		ToolSwap.At = Now + 0.1
+		local Best = store.tools.sword
+		local Hotbar = store.inventory and store.inventory.hotbar
+		if not (Best and Best.itemType and Hotbar) or (store.hand and store.hand.itemType == Best.itemType) then return end
+		if bedwars.DaoController and bedwars.DaoController.chargingMaid then return end
+		if not Entity.EntityPosition({
+			Origin = (store.rootpart or Entity.character.RootPart).Position,
+			Range = AutoToolRange.Value,
+			Part = "RootPart",
+			Wallcheck = Targets.Walls.Enabled or nil,
+			Players = Targets.Players.Enabled,
+			NPCs = Targets.NPCs.Enabled
+		}) then return end
+		for Index, Slot in Hotbar do
+			if Slot.item and Slot.item.itemType == Best.itemType then
+				ToolSwap.Busy, ToolSwap.At = true, Now + 0.3
+				task.spawn(function()
+					pcall(hotbarSwitch, Index - 1)
+					ToolSwap.Busy = false
+				end)
+				return
+			end
+		end
 	end
-	
+	local NextHit: number = 0
+	local ServerSync = {Log = {}, Samples = {}, Seen = {}, From = {}, Transit = nil, Confirm = nil, Stamp = 0, Busy = 0, Rejects = 0}
+	local SendLog = {Head = 1, Tail = 0}
+	local function SendRoom(Cap: number): boolean
+		local Now: number = os.clock()
+		while SendLog.Head <= SendLog.Tail and Now - SendLog[SendLog.Head] >= 60 do
+			SendLog[SendLog.Head] = nil
+			SendLog.Head += 1
+		end
+		return SendLog.Tail - SendLog.Head + 1 < Cap
+	end
+	local function LogSend()
+		SendLog.Tail += 1
+		SendLog[SendLog.Tail] = os.clock()
+	end
+	local function ResetSync()
+		table.clear(ServerSync.Log)
+		table.clear(ServerSync.Samples)
+		table.clear(ServerSync.Seen)
+		table.clear(ServerSync.From)
+		ServerSync.Transit, ServerSync.Confirm, ServerSync.Stamp, ServerSync.Busy, ServerSync.Rejects = nil, nil, 0, 0, 0
+	end
+	local function ReadStamp(Character: Instance): boolean
+		local Stamp = Character:GetAttribute("LastDamageTakenTime")
+		if type(Stamp) ~= "number" or Stamp ~= Stamp or Stamp <= ServerSync.Stamp then
+			return false
+		end
+		ServerSync.Stamp = Stamp
+		local Log = ServerSync.Log
+		for i: number = #Log, 1, -1 do
+			if Log[i] <= Stamp then
+				if ServerSync.Transit and Stamp - Log[i] > ServerSync.Transit + 0.05 and ServerSync.Rejects < 3 then
+					ServerSync.Rejects += 1
+					break
+				end
+				local Samples = ServerSync.Samples
+				if ServerSync.Rejects >= 3 then
+					table.clear(Samples)
+					table.clear(ServerSync.Seen)
+				end
+				ServerSync.Rejects = 0
+				table.insert(Samples, Stamp - Log[i])
+				if #Samples > 5 then
+					table.remove(Samples, 1)
+				end
+				local Low: number = math.huge
+				for _, Sample: number in Samples do
+					Low = math.min(Low, Sample)
+				end
+				ServerSync.Transit = Low
+				local Seen = ServerSync.Seen
+				table.insert(Seen, workspace:GetServerTimeNow() - Log[i])
+				if #Seen > 5 then
+					table.remove(Seen, 1)
+				end
+				local High: number = 0
+				for _, Sample: number in Seen do
+					High = math.max(High, Sample)
+				end
+				ServerSync.Confirm = High
+				break
+			end
+		end
+		return true
+	end
+
 	local Animations, AnimDelay, AnimTween, ArmC0 = vape.Libraries.auraanims, tick()
 	local ArmWrist: Motor6D?
 	local ArcCheck: RaycastParams = RaycastParams.new()
 	ArcCheck.FilterType = Enum.RaycastFilterType.Exclude
-	local AttackRemote = {FireServer = function() end}
-	local SwordSwingMiss = {FireServer = function() end}
+	local AttackRemote = {Fire = function() end, FireServer = function() end}
+	local SwordSwingMiss = {Fire = function() end, FireServer = function() end}
+	local RemoteReady = false
 	local ProjectileRemote = bedwars.Handler:Get("ProjectileFire")
 	local FastHitPending, LastShot = nil, 0
-	local ArrivalFloor: number = SwordTiming.ArrivalFloor
-	local HitBudget, HitFloor, GapFloor = 0.2, SwordTiming.HitFloor, SwordTiming.GapFloor
-	local CleanFloor: number = SwordTiming.HighSpacing
+	local HitBudget: number = 0.2
 	local TargetLag: number = 0.12
 	local SelfLag: number = 0.09
 	local SelfLagLow: number = 0.07
@@ -7266,1471 +7303,1263 @@ Run(function()
 	local TrailTimes: {number} = {}
 	local TrailPositions: {Vector3} = {}
 	local SelfReference = {Low = Vector3.zero, High = Vector3.zero, Claim = Vector3.zero}
-	local BurstShots, BurstWait = 0, 0
-	local FuryScale: number = 1 - (bedwars.BlackMarketeerBalance.FURY_POTION_ATTACK_SPEED_MULTIPLIER - 1)
-	local SwordEffect: (...any) -> ...any = rawget(rawget(getmetatable(bedwars.SwordController), "__index"), "playSwordEffect")
-	local ScanInterval: number = 1 / 30
+	local SwordEffect = getmetatable(bedwars.SwordController).__index.playSwordEffect
+	local ScanInterval: number = 1 / 75
 	local FlatScale: Vector3 = Vector3.new(1, 0, 1)
 	local ParkedPosition: Vector3 = Vector3.new(9e9, 9e9, 9e9)
 	local ParticleShown: {[Part]: boolean} = setmetatable({}, {__mode = "k"})
+	local BoxShown = setmetatable({}, {__mode = "k"})
 	
-	local ItemDropsFolder: Instance? = workspace:FindFirstChild("ItemDrops")
-	local ItemDropsRefresh: number = 0
-	local function GetItemDropsFolder(): Instance?
-	    local Now: number = os.clock()
-	    if Now >= ItemDropsRefresh or (ItemDropsFolder and not ItemDropsFolder.Parent) then
-	        ItemDropsFolder = workspace:FindFirstChild("ItemDrops")
-	        ItemDropsRefresh = Now + 2
-	    end
-	    return ItemDropsFolder
-	end
-
+	local CombatCache = {
+		Tick = 0,
+		Frame = setmetatable({}, {__mode = "k"}),
+		Result = setmetatable({}, {__mode = "k"}),
+		Static = setmetatable({}, {__mode = "k"})
+	}
 	local function IsCombatTarget(Ent): boolean
-	    local Character: Instance? = Ent.Character
-	    local RootPart: BasePart? = Ent.RootPart
-	    local Drops: Instance? = GetItemDropsFolder()
-	    return Character ~= nil and Character:IsA("Model") and Character.Parent ~= nil
-	        and RootPart ~= nil and RootPart:IsDescendantOf(Character)
-	        and Ent.Health > 0 and Ent.Targetable and Entity.isVulnerable(Ent)
-	        and not Character:HasTag("ItemDrop") and not RootPart:HasTag("ItemDrop")
-	        and not (Drops and Character:IsDescendantOf(Drops))
+		if CombatCache.Frame[Ent] == CombatCache.Tick then
+			return CombatCache.Result[Ent]
+		end
+		local Character: Instance? = Ent.Character
+		local RootPart: BasePart? = Ent.RootPart
+		local Result: boolean = false
+		local Parent: Instance? = Character and Character.Parent
+		if Parent and RootPart then
+			local RootParent: Instance? = RootPart.Parent
+			if (RootParent == Character or RootParent ~= nil and RootPart:IsDescendantOf(Character))
+				and Ent.Health > 0 and Ent.Targetable and Entity.isVulnerable(Ent) then
+				local Now: number = os.clock()
+				local Checked = CombatCache.Static[Character]
+				if not Checked then
+					Checked = {}
+					CombatCache.Static[Character] = Checked
+				end
+				if Checked.Root ~= RootPart or Now > Checked.Until then
+					Checked.Root, Checked.Until = RootPart, Now + 1
+					Checked.Ok = Character:IsA("Model") and not Character:HasTag("ItemDrop") and not RootPart:HasTag("ItemDrop")
+				end
+				if Checked.Ok then
+					if Parent == workspace then
+						Result = true
+					else
+						local Drops: Instance? = workspace:FindFirstChild("ItemDrops")
+						Result = not (Drops and Character:IsDescendantOf(Drops))
+					end
+				end
+			end
+		end
+		CombatCache.Frame[Ent], CombatCache.Result[Ent] = CombatCache.Tick, Result
+		return Result
 	end
 	
 	local function TrackTrail(Position: Vector3, Now: number)
-	    local Count: number = #TrailTimes
-	    if Count > 0 and Now - TrailTimes[Count] > 0.25 then
-	        table.clear(TrailTimes)
-	        table.clear(TrailPositions)
-	    end
-	    table.insert(TrailTimes, Now)
-	    table.insert(TrailPositions, Position)
-	    while #TrailTimes > 2 and Now - TrailTimes[2] >= TrailLength do
-	        table.remove(TrailTimes, 1)
-	        table.remove(TrailPositions, 1)
-	    end
+		local Count: number = #TrailTimes
+		if Count > 0 and Now - TrailTimes[Count] > 0.25 then
+			table.clear(TrailTimes)
+			table.clear(TrailPositions)
+		end
+		table.insert(TrailTimes, Now)
+		table.insert(TrailPositions, Position)
+		while #TrailTimes > 2 and Now - TrailTimes[2] >= TrailLength do
+			table.remove(TrailTimes, 1)
+			table.remove(TrailPositions, 1)
+		end
 	end
 	
 	local function GetTrailPosition(Moment: number, Fallback: Vector3): Vector3
-	    local Count: number = #TrailTimes
-	    if Count == 0 then
-	        return Fallback
-	    end
-	    if Moment <= TrailTimes[1] then
-	        return TrailPositions[1]
-	    end
-	    for i: number = Count, 2, -1 do
-	        if TrailTimes[i - 1] <= Moment then
-	            local Span: number = TrailTimes[i] - TrailTimes[i - 1]
-	            local Alpha: number = Span > 0 and (Moment - TrailTimes[i - 1]) / Span or 1
-	            return TrailPositions[i - 1]:Lerp(TrailPositions[i], math.clamp(Alpha, 0, 1))
-	        end
-	    end
-	    return TrailPositions[Count]
+		local Count: number = #TrailTimes
+		if Count == 0 then
+			return Fallback
+		end
+		if Moment <= TrailTimes[1] then
+			return TrailPositions[1]
+		end
+		for i: number = Count, 2, -1 do
+			if TrailTimes[i - 1] <= Moment then
+				local Span: number = TrailTimes[i] - TrailTimes[i - 1]
+				local Alpha: number = Span > 0 and (Moment - TrailTimes[i - 1]) / Span or 1
+				return TrailPositions[i - 1]:Lerp(TrailPositions[i], math.clamp(Alpha, 0, 1))
+			end
+		end
+		return TrailPositions[Count]
 	end
 	
 	local function UpdateSelfReference(Now: number, Fallback: Vector3)
-	    SelfReference.Low = GetTrailPosition(Now - SelfLagLow, Fallback)
-	    SelfReference.High = GetTrailPosition(Now - SelfLagHigh, Fallback)
-	    SelfReference.Claim = GetTrailPosition(Now - SelfLag, Fallback)
+		SelfReference.Low = GetTrailPosition(Now - SelfLagLow, Fallback)
+		SelfReference.High = GetTrailPosition(Now - SelfLagHigh, Fallback)
+		SelfReference.Claim = GetTrailPosition(Now - SelfLag, Fallback)
 	end
 	
 	local function GetLagOffset(Velocity: Vector3, Lag: number): Vector3
-	    local Offset: Vector3 = Velocity * Lag
-	    return Offset.Magnitude > LagCap and Offset.Unit * LagCap or Offset
+		local Offset: Vector3 = Velocity * Lag
+		return Offset.Magnitude > LagCap and Offset.Unit * LagCap or Offset
 	end
 	
 	local function GetTargetState(Seen: Vector3, Velocity: Vector3): (Vector3, number)
-	    local Reference: Vector3 = Seen - GetLagOffset(Velocity, TargetLag)
-	    local Distance: number = math.max(
-	        (Seen - SelfReference.Low).Magnitude,
-	        (Seen - SelfReference.High).Magnitude,
-	        (Reference - SelfReference.Low).Magnitude,
-	        (Reference - SelfReference.High).Magnitude
-	    )
-	    return Seen - GetLagOffset(Velocity, ClaimLag), Distance
+		local Reference: Vector3 = Seen - GetLagOffset(Velocity, TargetLag)
+		local Distance: number = math.max(
+			(Seen - SelfReference.Low).Magnitude,
+			(Seen - SelfReference.High).Magnitude,
+			(Reference - SelfReference.Low).Magnitude,
+			(Reference - SelfReference.High).Magnitude
+		)
+		return Seen - GetLagOffset(Velocity, ClaimLag), Distance
 	end
 	
 	local function GetSelfClaim(Claim: Vector3, Reach: number): (Vector3, Vector3)
-	    local Delta: Vector3 = Claim - SelfReference.Claim
-	    local Direction: Vector3 = Delta.Magnitude > 0.001 and Delta.Unit or Vector3.new(0, -1, 0)
-	    return Claim - Direction * math.min(Delta.Magnitude, Reach - ClaimMargin), Direction
+		local Delta: Vector3 = Claim - SelfReference.Claim
+		local Direction: Vector3 = Delta.Magnitude > 0.001 and Delta.Unit or Vector3.new(0, -1, 0)
+		return Claim - Direction * math.min(Delta.Magnitude, Reach - ClaimMargin), Direction
 	end
 	
 	local function GetRangeLimit(Reach: number): number
-	    return math.min(AttackRange.Value, Reach + ServerReach - RangeMargin)
+		return math.min(AttackRange.Value, Reach + ServerReach - RangeMargin)
 	end
 	
 	task.spawn(function()
-	    AttackRemote = bedwars.Handler:Get("SwordHit")
-	    SwordSwingMiss = bedwars.Handler:Get("SwordSwingMiss")
-	    HitBudget = 60 / AttackRemote:GetRateLimit()
+		local HitOk, HitRemote = pcall(function()
+			return bedwars.Handler:Get("SwordHit")
+		end)
+		local MissOk, MissRemote = pcall(function()
+			return bedwars.Handler:Get("SwordSwingMiss")
+		end)
+		if not HitOk or not HitRemote or not MissOk or not MissRemote then
+			vape:CreateNotification("Elevate", "Killaura could not initialize its sword remotes", 10, "alert")
+			return
+		end
+		AttackRemote, SwordSwingMiss = HitRemote, MissRemote
+		local RateOk, RateLimit = pcall(function()
+			return HitRemote:GetRateLimit()
+		end)
+		if RateOk and type(RateLimit) == "number" and RateLimit > 0 then
+			HitBudget = 60 / RateLimit
+		end
+		RemoteReady = true
 	end)
 	
 	local FireRates: {[string]: number} = {}
+
+	local function PlaySwordSwing(SwordMeta: any, Sword: any)
+		bedwars.SwordController:playSwordEffect(SwordMeta, false, {itemSkin = Sword.itemSkin, playSound = false})
+	end
 	
 	local function GetShots(): {{any}}
-	    local Shots: {{any}} = getProjectiles(Whitelist.ListEnabled, UseSophia.Enabled, UseWhim.Enabled, UseNazar.Enabled, UseUmeko.Enabled)
-	    local Lasso = UseLasso.Enabled and getItem("lasso") or nil
-	    local Source = Lasso and bedwars.ItemMeta.lasso.projectileSource or nil
-	    if not Source then
-	        return Shots
-	    end
+		local Shots: {{any}} = getProjectiles(Whitelist.ListEnabled, AlsoUse:Has("Sophia"), AlsoUse:Has("Whim"), AlsoUse:Has("Nazar"), AlsoUse:Has("Umeko"), AlsoUse:Has("Fireball"), AlsoUse:Has("Gloop"))
+		local Lasso = AlsoUse:Has("Lasso") and getItem("lasso") or nil
+		local Source = Lasso and bedwars.ItemMeta.lasso.projectileSource or nil
+		if not Source then
+			return Shots
+		end
 	
-	    for _, v: {any} in Shots do
-	        if v[1].itemType == "lasso" then
-	            return Shots
-	        end
-	    end
-	    table.insert(Shots, {Lasso, "lasso", Source.projectileType("lasso"), Source})
-	    return Shots
+		for _, v: {any} in Shots do
+			if v[1].itemType == "lasso" then
+				return Shots
+			end
+		end
+		table.insert(Shots, {Lasso, "lasso", Source.projectileType("lasso"), Source})
+		return Shots
 	end
 	
 	local function UpdateVisuals(Attacked: {any}, BoxData: {[BoxHandleAdornment]: any})
-	    for i: number, v: BoxHandleAdornment in Boxes do
-	        if BoxData[v] == nil and Attacked[i] then
-	            if vape.ThreadFix then
-	                setthreadidentity(8)
-	            end
-	            v.Size = Vector3.zero
-	            if vape.ThreadFix then
-	                setthreadidentity(8)
-	            end
-	            local Tween = TweenService:Create(v, TweenInfo.new(BoxAttackSpeed.Value, Enum.EasingStyle[BoxAttackTween.Value]), {
-	                Size = Vector3.new(4, 6, 4)
-	            })
-	            if vape.ThreadFix then
-	                setthreadidentity(8)
-	            end
-	            Tween:Play()
-	        elseif BoxData[v] and not Attacked[i] then
-	            if vape.ThreadFix then
-	                setthreadidentity(8)
-	            end
-	            local Tween = TweenService:Create(v, TweenInfo.new(BoxAttackSpeedEnd.Value, Enum.EasingStyle[BoxAttackTween.Value]), {
-	                Size = Vector3.zero
-	            })
-	            if vape.ThreadFix then
-	                setthreadidentity(8)
-	            end
-	            Tween:Play()
-	        end
-	        BoxData[v] = Attacked[i] or nil
+		for i: number, v: BoxHandleAdornment in Boxes do
+			if BoxData[v] == nil and Attacked[i] then
+				if vape.ThreadFix then
+					setthreadidentity(8)
+				end
+				v.Size = Vector3.zero
+				if vape.ThreadFix then
+					setthreadidentity(8)
+				end
+				local Tween = TweenService:Create(v, TweenInfo.new(BoxAttackSpeed.Value, Enum.EasingStyle[BoxAttackTween.Value]), {
+					Size = Vector3.new(4, 6, 4)
+				})
+				if vape.ThreadFix then
+					setthreadidentity(8)
+				end
+				Tween:Play()
+			elseif BoxData[v] and not Attacked[i] then
+				if vape.ThreadFix then
+					setthreadidentity(8)
+				end
+				local Tween = TweenService:Create(v, TweenInfo.new(BoxAttackSpeedEnd.Value, Enum.EasingStyle[BoxAttackTween.Value]), {
+					Size = Vector3.zero
+				})
+				if vape.ThreadFix then
+					setthreadidentity(8)
+				end
+				Tween:Play()
+			end
+			BoxData[v] = Attacked[i] or nil
 	
-	        if Attacked[i] then
-	            if vape.ThreadFix then
-	                setthreadidentity(8)
-	            end
-	            v.Adornee = Attacked[i].Entity.RootPart
-	            if vape.ThreadFix then
-	                setthreadidentity(8)
-	            end
-	            v.Color3 = Color3.fromHSV(Attacked[i].Check.Hue, Attacked[i].Check.Sat, Attacked[i].Check.Value)
-	            if vape.ThreadFix then
-	                setthreadidentity(8)
-	            end
-	            v.Transparency = 1 - Attacked[i].Check.Opacity
-	        end
-	    end
+			if Attacked[i] then
+				local Check = Attacked[i].Check
+				local Adornee: BasePart = Attacked[i].Entity.RootPart
+				local Shown = BoxShown[v]
+				if not Shown then
+					Shown = {}
+					BoxShown[v] = Shown
+				end
+				if Shown.Adornee ~= Adornee then
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					v.Adornee = Adornee
+					Shown.Adornee = Adornee
+				end
+				if Shown.Hue ~= Check.Hue or Shown.Sat ~= Check.Sat or Shown.Value ~= Check.Value then
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					v.Color3 = Color3.fromHSV(Check.Hue, Check.Sat, Check.Value)
+					Shown.Hue, Shown.Sat, Shown.Value = Check.Hue, Check.Sat, Check.Value
+				end
+				if Shown.Opacity ~= Check.Opacity then
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					v.Transparency = 1 - Check.Opacity
+					Shown.Opacity = Check.Opacity
+				end
+			end
+		end
 	
-	    for i: number, v: Part in Particles do
-	        if Attacked[i] then
-	            if vape.ThreadFix then
-	                setthreadidentity(8)
-	            end
-	            v.Position = Attacked[i].Entity.RootPart.Position
-	            if not ParticleShown[v] then
-	                if vape.ThreadFix then
-	                    setthreadidentity(8)
-	                end
-	                v.Parent = Camera
-	                ParticleShown[v] = true
-	            end
-	        elseif ParticleShown[v] ~= false then
-	            if vape.ThreadFix then
-	                setthreadidentity(8)
-	            end
-	            v.Position = ParkedPosition
-	            if vape.ThreadFix then
-	                setthreadidentity(8)
-	            end
-	            v.Parent = nil
-	            ParticleShown[v] = false
-	        end
-	    end
+		for i: number, v: Part in Particles do
+			if Attacked[i] then
+				if vape.ThreadFix then
+					setthreadidentity(8)
+				end
+				v.Position = Attacked[i].Entity.RootPart.Position
+				if not ParticleShown[v] then
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					v.Parent = Camera
+					ParticleShown[v] = true
+				end
+			elseif ParticleShown[v] ~= false then
+				if vape.ThreadFix then
+					setthreadidentity(8)
+				end
+				v.Position = ParkedPosition
+				if vape.ThreadFix then
+					setthreadidentity(8)
+				end
+				v.Parent = nil
+				ParticleShown[v] = false
+			end
+		end
 	end
 	
 	Killaura = vape.Categories.Blatant:CreateModule({
-	    Name = "Killaura",
-	    Function = function(Callback: boolean)
-	        if Callback then
-	            local PreviousSwing = bedwars.SwordController.playSwordEffect
-	            local Current = {}
-	            local Hook
-	            Session = Current
-	            GhostDelay, GhostHold, GhostStep, GhostCount, GhostWindow = 0, 0, 0, 0, 0
-	            RetryAt, RetryUntil = 0, 0
-	            table.clear(GhostPending)
-	            table.clear(HitPending)
-	            table.clear(TransitSamples)
-	            table.clear(TransitRecent)
-	            HitDeadline, TransitMin, ConfirmMin = 0, nil, nil
-	            OutlierStreak = 0
-	            HitregTiming.Spread = 0
-	            HitregTiming.Peak = 0
-	            HitregTiming.PeakUntil = 0
-	            OldSwing = PreviousSwing
-	            Hook = function(self, SwordMeta, Charged, Config)
-	                if not Killaura.Enabled or SwingHook ~= Hook then
-	                    return PreviousSwing(self, SwordMeta, Charged, Config)
-	                end
-	                if Config and Config.playAnimation == false then
-	                    return PreviousSwing(self, SwordMeta, Charged, Config)
-	                end
-	                if LegitAura.Enabled then
-	                    local Clicked: number = bedwars.SwordController.lastSwing
-	                    if (tick() - LastAttack) < 0.4 and Clicked == EffectSwing then
-	                        return
-	                    end
-	                    EffectSwing = Clicked
-	                    return PreviousSwing(self, SwordMeta, Charged, Config)
-	                end
-	                if ((tick() - LastAttack) < 0.4 or (tick() - AnimDelay) < 0.4) and (tick() - LastEffect) < SwingGap then
-	                    return
-	                end
-	                LastEffect = tick()
-	                SwingGap = math.max(SwingTime:GetRandomValue(), 0.11)
-	                return PreviousSwing(self, SwordMeta, Charged, Config)
-	            end
-	            SwingHook = Hook
-	            bedwars.SwordController.playSwordEffect = SwingHook
+		Name = "Killaura",
+		Function = function(Callback: boolean)
+			if Callback then
+				local oldAura = vape.Modules.KillauraOLD
+				if oldAura and oldAura.Enabled then
+					oldAura:Toggle()
+				end
+
+				local PreviousSwing = bedwars.SwordController.playSwordEffect
+				local Current = {}
+				local Hook
+				Session = Current
+				NextHit = 0
+				ResetSync()
+				OldSwing = PreviousSwing
+				Hook = function(self, SwordMeta, Charged, Config)
+					if not Killaura.Enabled or SwingHook ~= Hook then
+						return PreviousSwing(self, SwordMeta, Charged, Config)
+					end
+					if Config and Config.playAnimation == false then
+						return PreviousSwing(self, SwordMeta, Charged, Config)
+					end
+					if LegitAura.Enabled then
+						local Clicked: number = bedwars.SwordController.lastSwing
+						if (tick() - LastAttack) < 0.4 and Clicked == EffectSwing then
+							return
+						end
+						EffectSwing = Clicked
+						return PreviousSwing(self, SwordMeta, Charged, Config)
+					end
+					if ((tick() - LastAttack) < 0.4 or (tick() - AnimDelay) < 0.4) and (tick() - LastEffect) < SwingGap then
+						return
+					end
+					LastEffect = tick()
+					SwingGap = math.max(SwingTime:GetRandomValue(), 0.11)
+					return PreviousSwing(self, SwordMeta, Charged, Config)
+				end
+				SwingHook = Hook
+				Killaura:Clean(vapeEvents.EntityDamageEvent.Event:Connect(function(Data)
+					local Victim = Data.entityInstance
+					if Data.fromEntity ~= LocalPlayer.Character or Data.damageType ~= 0 or not Victim then
+						return
+					end
+					if not ReadStamp(Victim) then
+						task.defer(function()
+							if Victim.Parent then
+								ReadStamp(Victim)
+							end
+						end)
+					end
+				end))
+				bedwars.SwordController.playSwordEffect = SwingHook
+				local Controller = bedwars.SwordController
+				if not ServerSync.SendHook and type(Controller.sendServerRequest) == "function" then
+					local OldSend = Controller.sendServerRequest
+					local SendHook
+					SendHook = function(self, ...)
+						if Killaura.Enabled and ServerSync.SendHook == SendHook and tick() < ServerSync.Busy then
+							return
+						end
+						return OldSend(self, ...)
+					end
+					ServerSync.SendHook, ServerSync.OldSend = SendHook, OldSend
+					Controller.sendServerRequest = SendHook
+				end
 	
-	            LockTarget, LockSent, LockStamp, LockSearch, LockOffset = 0, 0, 0, true, nil
-	            LockSpace = SwordTiming.HighSpacing
-	            table.clear(LockSends)
+				if Animation.Enabled then
+					local FakeKnit = {
+						Controllers = {
+							ViewmodelController = {
+								isVisible = function()
+									return bedwars.ViewmodelController:isVisible()
+								end,
+								playAnimation = function(...)
+									if LegitAura.Enabled or not store.attacking or not (ArmWrist and ArmWrist.Parent) then
+										bedwars.ViewmodelController:playAnimation(select(2, ...))
+									end
+								end
+							}
+						}
+					}
+					debug.setupvalue(SwordEffect, 7, FakeKnit)
+					debug.setupvalue(bedwars.ScytheController.playLocalAnimation, 3, FakeKnit)
 	
-	            Killaura:Clean(vapeEvents.EntityDamageEvent.Event:Connect(function(DamageTable)
-	                if DamageTable.fromEntity == LocalPlayer.Character and DamageTable.damageType == 0 and DamageTable.entityInstance then
-	                    local Stamp: any = DamageTable.entityInstance:GetAttribute("LastDamageTakenTime")
-	                    if type(Stamp) == "number" and Stamp > LockStamp then
-	                        for Index: number, Send in LockSends do
-	                            if not Send.Done and Stamp >= Send.Srv - 0.05 and Stamp <= Send.Srv + 0.24 then
-	                                Send.Done = true
-	                                local Previous = LockSends[Index - 1]
-	                                local Extra: number = 0
-	                                if Previous and Previous.Done and LockStamp > 0 then
-	                                    Extra = math.round((Stamp - LockStamp) / HitregTiming.LockTick) - math.round((Send.Srv - Previous.Srv) / HitregTiming.LockTick)
-	                                end
-	                                local Offset: number = Stamp - Send.Srv
-	                                local Spike: boolean = LockSearch and Extra == 1 and LockOffset ~= nil and (LockOffset - HitregTiming.LockDrift + HitregTiming.LockTick - Offset) > HitregTiming.LockEdge
-	                                LockOffset = Offset - (LockSearch and Extra > 0 and Extra * HitregTiming.LockTick or 0)
-	                                if Extra == 1 and LockSearch and not Spike then
-	                                    LockSearch = false
-	                                    LockSpace = SwordTiming.HighSpacing
-	                                    LockTarget += HitregTiming.LockTick - HitregTiming.LockDrift * 0.5 - HitregTiming.LockPhase
-	                                elseif Extra >= 1 and Extra <= 45 then
-	                                    LockTarget += Extra * HitregTiming.LockTick - (LockSearch and 0 or HitregTiming.LockNudge)
-	                                end
-	                                LockStamp = Stamp
-	                                break
-	                            end
-	                        end
-	                    end
-	                end
-	                if DamageTable.fromEntity == LocalPlayer.Character and DamageTable.damageType == 0 and DamageTable.entityInstance then
-	                    local Stamp = DamageTable.entityInstance:GetAttribute("LastDamageTakenTime")
-	                    if type(Stamp) == "number" and Stamp == Stamp then
-	                        local Selected: number?
-	                        local Received: number = os.clock()
-	                        if HitregTiming.MatchTransit then
-	                            local Lifetime: number = GetHitLifetime()
-	                            local Center: number = TransitMin and (TransitMin + HitregTiming.Spread * 0.5) or 0
-	                            local Best: number = math.huge
-	                            local Lowest: number = TransitMin and (TransitMin - HitregTiming.FloorSlack) or -math.huge
-	                            for Pass: number = 1, 2 do
-	                                for Index: number, Entry: any in HitPending do
-	                                    local Elapsed: number = Received - Entry.timer
-	                                    local Implied: number = Stamp - Entry.timer
-	                                    if Entry.target == DamageTable.entityInstance and Elapsed >= 0 and Elapsed < Lifetime and (Pass == 2 or Implied >= Lowest) then
-	                                        local Difference: number = TransitMin and math.abs(Implied - Center) or Index - 1
-	                                        if Difference < Best then
-	                                            Selected, Best = Index, Difference
-	                                        end
-	                                    end
-	                                end
-	                                if Selected then
-	                                    break
-	                                end
-	                            end
-	                        else
-	                            for Index: number = #HitPending, 1, -1 do
-	                                local Entry = HitPending[Index]
-	                                if Entry.target == DamageTable.entityInstance and Stamp >= Entry.clock and (Stamp - Entry.clock) < 1 then
-	                                    Selected = Index
-	                                    break
-	                                end
-	                            end
-	                        end
-	                        local Previous: number? = TargetStamps[DamageTable.entityInstance]
-	                        TargetStamps[DamageTable.entityInstance] = Stamp
-	                        if Selected then
-	                            local Entry = HitPending[Selected]
-	                            local Transit: number = Stamp - (HitregTiming.MatchTransit and Entry.timer or Entry.clock)
-	                            local Confirmation: number = HitregTiming.MatchTransit and (Received - Entry.timer) or (tick() - Entry.sent)
-	                            local Usable: boolean = not (Previous and Stamp <= Previous)
-	                            if Usable and #TransitRecent >= HitregTiming.OutlierSamples then
-	                                local Sorted: {number} = table.clone(TransitRecent)
-	                                table.sort(Sorted)
-	                                if Transit < Sorted[(#Sorted + 1) // 2] - HitregTiming.OutlierGap then
-	                                    OutlierStreak += 1
-	                                    if OutlierStreak > 2 then
-	                                        OutlierStreak = 0
-	                                        table.clear(TransitRecent)
-	                                        table.clear(TransitSamples)
-	                                        TransitMin = nil
-	                                    else
-	                                        Usable = false
-	                                    end
-	                                else
-	                                    OutlierStreak = 0
-	                                end
-	                            end
-	                            if not Usable then
-	                                for _ = 1, Selected do
-	                                    table.remove(HitPending, 1)
-	                                end
-	                                Selected = nil
-	                            end
-	                        end
-	                        if Selected then
-	                            local Entry = HitPending[Selected]
-	                            local Transit: number = Stamp - (HitregTiming.MatchTransit and Entry.timer or Entry.clock)
-	                            local Confirmation: number = HitregTiming.MatchTransit and (Received - Entry.timer) or (tick() - Entry.sent)
-	                            table.insert(TransitSamples, Transit)
-	                            if #TransitSamples > HitregTiming.Window then
-	                                table.remove(TransitSamples, 1)
-	                            end
-	                            table.insert(TransitRecent, Transit)
-	                            if #TransitRecent > HitregTiming.FloorWindow then
-	                                table.remove(TransitRecent, 1)
-	                            end
-	                            local TransitFloor: number = Transit
-	                            for _, Recent: number in TransitRecent do
-	                                TransitFloor = math.min(TransitFloor, Recent)
-	                            end
-	                            local Minimum, Maximum = Transit, Transit
-	                            for _, Delay: number in TransitSamples do
-	                                Minimum = math.min(Minimum, Delay)
-	                                Maximum = math.max(Maximum, Delay)
-	                            end
-	                            HitregTiming.Spread = Maximum - Minimum
-	                            if HitregTiming.MarginHold > 0 and HitregTiming.Spread > HitregTiming.Noise then
-	                                HitregTiming.Peak = math.max(tick() < HitregTiming.PeakUntil and HitregTiming.Peak or 0, HitregTiming.Spread)
-	                                HitregTiming.PeakUntil = tick() + HitregTiming.MarginHold
-	                            end
-	                            TransitMin = math.min(TransitMin and (TransitMin + 0.001) or Transit, Transit)
-	                            ConfirmMin = math.min(ConfirmMin and (ConfirmMin + 0.001) or Confirmation, Confirmation)
-	                            HitDeadline = math.max(HitDeadline, Entry.sent + Entry.gap + math.clamp(Transit - TransitFloor, 0, HitregTiming.ExcessCap))
-	                            for _ = 1, Selected do
-	                                table.remove(HitPending, 1)
-	                            end
-	                        end
-	                    end
-	                end
-	                if DamageTable.fromEntity == LocalPlayer.Character and DamageTable.damageType == 0 and GhostPending[1] then
-	                    table.remove(GhostPending, 1)
-	                end
-	            end))
+					task.spawn(function()
+						local Started: boolean = false
+						repeat
+							local Viewmodel: Instance? = Camera:FindFirstChild("Viewmodel")
+							local Hand: Instance? = Viewmodel and Viewmodel:FindFirstChild("RightHand")
+							local Wrist: Motor6D? = Hand and Hand:FindFirstChild("RightWrist")
+							if not Wrist then
+								ArmWrist, ArmC0 = nil, nil
+								Started = false
+								task.wait()
+								continue
+							end
+							if ArmWrist ~= Wrist then
+								ArmWrist, ArmC0 = Wrist, Wrist.C0
+								Started = false
+							end
+							if store.attacking then
+								local First: boolean = not Started
+								Started = true
 	
-	            if Animation.Enabled then
-	                local FakeKnit = {
-	                    Controllers = {
-	                        ViewmodelController = {
-	                            isVisible = function()
-	                                return bedwars.ViewmodelController:isVisible()
-	                            end,
-	                            playAnimation = function(...)
-	                                if LegitAura.Enabled or not store.attacking or not (ArmWrist and ArmWrist.Parent) then
-	                                    bedwars.ViewmodelController:playAnimation(select(2, ...))
-	                                end
-	                            end
-	                        }
-	                    }
-	                }
-	                debug.setupvalue(SwordEffect, 7, FakeKnit)
-	                debug.setupvalue(bedwars.ScytheController.playLocalAnimation, 3, FakeKnit)
+								if AnimationMode.Value == "Random" then
+									Animations.Random = {{CFrame = CFrame.Angles(math.rad(math.random(1, 360)), math.rad(math.random(1, 360)), math.rad(math.random(1, 360))), Time = 0.12}}
+								end
 	
-	                task.spawn(function()
-	                    local Started: boolean = false
-	                    repeat
-	                        local Viewmodel: Instance? = Camera:FindFirstChild("Viewmodel")
-	                        local Hand: Instance? = Viewmodel and Viewmodel:FindFirstChild("RightHand")
-	                        local Wrist: Motor6D? = Hand and Hand:FindFirstChild("RightWrist")
-	                        if not Wrist then
-	                            ArmWrist, ArmC0 = nil, nil
-	                            Started = false
-	                            task.wait()
-	                            continue
-	                        end
-	                        if ArmWrist ~= Wrist then
-	                            ArmWrist, ArmC0 = Wrist, Wrist.C0
-	                            Started = false
-	                        end
-	                        if store.attacking then
-	                            local First: boolean = not Started
-	                            Started = true
+								for _, v: {CFrame: CFrame, Time: number} in Animations[AnimationMode.Value] do
+									AnimTween = TweenService:Create(ArmWrist, TweenInfo.new(First and (AnimationTween.Enabled and 0.001 or 0.1) or v.Time / AnimationSpeed.Value, Enum.EasingStyle.Linear), {
+										C0 = ArmC0 * v.CFrame
+									})
+									AnimTween:Play()
+									AnimTween.Completed:Wait()
+									First = false
+									if (not Killaura.Enabled) or (not store.attacking) or Session ~= Current or not ArmWrist.Parent then
+										break
+									end
+								end
+							elseif Started then
+								Started = false
+								AnimTween = TweenService:Create(ArmWrist, TweenInfo.new(AnimationTween.Enabled and 0.001 or 0.3, Enum.EasingStyle.Exponential), {
+									C0 = ArmC0
+								})
+								AnimTween:Play()
+							end
 	
-	                            if AnimationMode.Value == "Random" then
-	                                Animations.Random = {{CFrame = CFrame.Angles(math.rad(math.random(1, 360)), math.rad(math.random(1, 360)), math.rad(math.random(1, 360))), Time = 0.12}}
-	                            end
+							if not Started then
+								task.wait()
+							end
+						until (not Killaura.Enabled) or (not Animation.Enabled) or Session ~= Current
+					end)
+				end
 	
-	                            for _, v: {CFrame: CFrame, Time: number} in Animations[AnimationMode.Value] do
-	                                AnimTween = TweenService:Create(ArmWrist, TweenInfo.new(First and (AnimationTween.Enabled and 0.001 or 0.1) or v.Time / AnimationSpeed.Value, Enum.EasingStyle.Linear), {
-	                                    C0 = ArmC0 * v.CFrame
-	                                })
-	                                AnimTween:Play()
-	                                AnimTween.Completed:Wait()
-	                                First = false
-	                                if (not Killaura.Enabled) or (not store.attacking) or Session ~= Current or not ArmWrist.Parent then
-	                                    break
-	                                end
-	                            end
-	                        elseif Started then
-	                            Started = false
-	                            AnimTween = TweenService:Create(ArmWrist, TweenInfo.new(AnimationTween.Enabled and 0.001 or 0.3, Enum.EasingStyle.Exponential), {
-	                                C0 = ArmC0
-	                            })
-	                            AnimTween:Play()
-	                        end
+				local BoxData = {}
+				local FrameCount, FrameWindow, FrameTime = 0, tick(), RunService.Heartbeat:Wait()
+				local FrameStep: number = FrameTime
+				if not Killaura.Enabled or Session ~= Current then
+					return
+				end
+				Killaura:Clean(RunService.Heartbeat:Connect(function(Delta: number)
+					FrameStep = Delta
+				end))
 	
-	                        if not Started then
-	                            task.wait()
-	                        end
-	                    until (not Killaura.Enabled) or (not Animation.Enabled) or Session ~= Current
-	                end)
-	            end
+				local Entities, ScanClock, ScanSettings = {}, 0, {}
+				local function Rescan()
+					ScanClock = 0
+				end
+				Killaura:Clean(Entity.Events.EntityAdded:Connect(Rescan))
+				Killaura:Clean(Entity.Events.EntityRemoved:Connect(Rescan))
 	
-	            local BoxData = {}
-	            local FrameCount, FrameWindow, FrameTime = 0, tick(), HighHitreg.Enabled and RunService.Heartbeat:Wait() or 1 / 240
-	            local FrameStep: number = FrameTime
-	            if not Killaura.Enabled or Session ~= Current then
-	                return
-	            end
-	            Killaura:Clean(RunService.Heartbeat:Connect(function(Delta: number)
-	                FrameStep = Delta
-	                LockFrame = Delta
-	            end))
+				local Attacked, SwingOnly, AttackedPool = {}, {}, {}
+				local LastHit, ProjectileIndex = 0, 1
+				(function()
+					repeat
+						if vape.ThreadFix then
+							setthreadidentity(8)
+						end
 	
-	            local Entities, ScanClock = {}, 0
-	            local function Rescan()
-	                ScanClock = 0
-	            end
-	            Killaura:Clean(Entity.Events.EntityAdded:Connect(Rescan))
-	            Killaura:Clean(Entity.Events.EntityRemoved:Connect(Rescan))
+						local Sword, SwordMeta = nil, nil
+						table.clear(Attacked)
+						FrameCount += 1
+						CombatCache.Tick += 1
+						if (tick() - FrameWindow) >= 0.25 then
+							FrameTime += (((tick() - FrameWindow) / FrameCount) - FrameTime) * 0.1
+							FrameCount, FrameWindow = 0, tick()
+						end
 	
-	            local Attacked, SwingOnly, AttackedPool = {}, {}, {}
-	            local SwingCooldown, LastHit, ProjectileIndex = 0, 0, 1
-	            (function()
-	                repeat
-	                    if vape.ThreadFix then
-	                        setthreadidentity(8)
-	                    end
+						local Blocked: boolean = Mouse.Enabled and not UserInputService:IsMouseButtonPressed(0)
+				if not RemoteReady then
+					Blocked = true
+				end
+						if not Blocked and AFKCheck.Enabled and isAfk() then
+							Blocked = true
+						end
+						if not Blocked and GUI.Enabled and bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
+							Blocked = true
+						end
+						if not Blocked and Attackable.Enabled then
+							Blocked = not Entity.isAlive
+								or (LocalPlayer.Character:GetAttribute("StunnedUntilTime") or 0) > workspace:GetServerTimeNow()
+								or LocalPlayer.Character:FindFirstChild("elk") ~= nil
+								or bedwars.StatusEffectUtil:isActive(LocalPlayer.Character, "frozen")
+						end
 	
-	                    local Sword, SwordMeta = nil, nil
-	                    table.clear(Attacked)
-	                    FrameCount += 1
-	                    if (tick() - FrameWindow) >= 0.25 then
-	                        FrameTime += (((tick() - FrameWindow) / FrameCount) - FrameTime) * 0.1
-	                        FrameCount, FrameWindow = 0, tick()
-	                    end
+						if not Blocked and AutoTool.Enabled then
+							SwapToSword()
+						end
 	
-	                    local Blocked: boolean = Mouse.Enabled and not UserInputService:IsMouseButtonPressed(0)
-	                    if not Blocked and AFKCheck.Enabled and isAfk() then
-	                        Blocked = true
-	                    end
-	                    if not Blocked and GUI.Enabled and bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
-	                        Blocked = true
-	                    end
-	                    if not Blocked and Attackable.Enabled then
-	                        Blocked = not Entity.isAlive
-	                            or (LocalPlayer.Character:GetAttribute("StunnedUntilTime") or 0) > workspace:GetServerTimeNow()
-	                            or LocalPlayer.Character:FindFirstChild("elk") ~= nil
-	                            or bedwars.StatusEffectUtil:isActive(LocalPlayer.Character, "frozen")
-	                    end
+						if not Blocked then
+							Sword = Limit.Enabled and store.hand or store.tools.sword
+							if not Sword or not Sword.tool then
+								Sword = nil
+							elseif Limit.Enabled and (store.hand.toolType ~= "sword" or bedwars.DaoController.chargingMaid) then
+								Sword = nil
+							elseif LegitAura.Enabled and (tick() - bedwars.SwordController.lastSwing) > 0.2 then
+								Sword = nil
+							else
+								SwordMeta = bedwars.ItemMeta[Sword.tool.Name]
+							end
+						end
 	
-	                    if not Blocked then
-	                        Sword = Limit.Enabled and store.hand or store.tools.sword
-	                        if not Sword or not Sword.tool then
-	                            Sword = nil
-	                        elseif Limit.Enabled and (store.hand.toolType ~= "sword" or bedwars.DaoController.chargingMaid) then
-	                            Sword = nil
-	                        elseif LegitAura.Enabled and (tick() - bedwars.SwordController.lastSwing) > 0.2 then
-	                            Sword = nil
-	                        else
-	                            SwordMeta = bedwars.ItemMeta[Sword.tool.Name]
-	                        end
-	                    end
+						store.attacking = false
+						store.KillauraTarget = nil
+						if Sword then
+							local Root: BasePart = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart or Entity.character.RootPart
+							TrackTrail((store.rootpart or Root).Position, os.clock())
+							if not Entity.isAlive or (os.clock() - ScanClock) >= ScanInterval then
+								ScanSettings.Origin = Root.Position
+								ScanSettings.Range = math.max(SwingRange.Value, store.desyncRange or 0)
+								ScanSettings.Wallcheck = Targets.Walls.Enabled or nil
+								ScanSettings.Part = "RootPart"
+								ScanSettings.Players = Targets.Players.Enabled
+								ScanSettings.NPCs = Targets.NPCs.Enabled
+								ScanSettings.Priority = Targets.Priority.Value
+								ScanSettings.Sort = sortmethods[Sort.Value]
+								Entities = Entity.AllPosition(ScanSettings)
+								ScanClock = os.clock()
+							end
 	
-	                    store.attacking = false
-	                    store.KillauraTarget = nil
-	                    if Sword then
-	                        local Root: BasePart = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart or Entity.character.RootPart
-	                        TrackTrail((store.rootpart or Root).Position, os.clock())
-	                        if not Entity.isAlive or (os.clock() - ScanClock) >= ScanInterval then
-	                            Entities = Entity.AllPosition({
-	                                Origin = Root.Position,
-	                                Range = SwingRange.Value,
-	                                Wallcheck = Targets.Walls.Enabled or nil,
-	                                Part = "RootPart",
-	                                Players = Targets.Players.Enabled,
-	                                NPCs = Targets.NPCs.Enabled,
-	                                Priority = Targets.Priority.Value,
-	                                Sort = sortmethods[Sort.Value],
-	                                Limit = math.max(8, MaxTargets.Value + 3)
-	                            })
-	                            ScanClock = os.clock()
-	                        end
+							if #Entities > 0 then
+								switchItem(Sword.tool, 0)
+								local SelfPosition: Vector3 = Root.Position
+								local SendPosition: Vector3 = store.rootpart and store.rootpart.Position or SelfPosition
+								UpdateSelfReference(os.clock(), SendPosition)
+								local LocalFacing: Vector3 = Root.CFrame.LookVector * FlatScale
+								local DisplayName: string = SwordMeta and SwordMeta.displayName or ""
+								local SwordSpeed: number = SwordMeta and SwordMeta.sword and SwordMeta.sword.attackSpeed or 0.3
+								local RealSpeed: number, Cancelled: boolean = SwordSpeed, false
+								if bedwars.swordSpeed then
+									RealSpeed, Cancelled = bedwars.swordSpeed(Sword.tool.Name, SwordSpeed)
+								end
+								local Mode = SwordTiming.Modes[HitregMode.Value] or SwordTiming.Modes.High
+								local Spacing: number = SwordTiming.Spacing(Mode.Hits, RealSpeed)
+								if Mode.Budget then
+									Spacing = math.max(Spacing, HitBudget)
+								end
+								local GapMin: number = Spacing - math.min(FrameTime, 0.009)
+								local AttackCooldown: number = math.max(RealSpeed - SwordTiming.CooldownCorrection, 0)
+								local Reach: number = getReach(Sword.tool)
+								local RangeLimit: number = GetRangeLimit(Reach)
+								store.attackLimit = RangeLimit
+								RangeLimit = math.max(RangeLimit, store.desyncLimit or 0)
 	
-	                        if #Entities > 0 then
-	                            if not getgenv().Healing then
-	                                switchItem(Sword.tool, 0)
-	                            end
-	                            
-	                            local SelfPosition: Vector3 = Root.Position
-	                            local SendPosition: Vector3 = store.rootpart and store.rootpart.Position or SelfPosition
-	                            UpdateSelfReference(os.clock(), SendPosition)
-	                            local LocalFacing: Vector3 = Root.CFrame.LookVector * FlatScale
-	                            local DisplayName: string = SwordMeta and SwordMeta.displayName or ""
-	                            local FuryMultiplier: number = bedwars.StatusEffectUtil:isActive(LocalPlayer.Character, "fury_potion") and FuryScale or 1
-	                            local SwordSpeed: number = FixedSpeeds[Sword.tool.Name] or SwordMeta and SwordMeta.sword and SwordMeta.sword.attackSpeed or 0.3
-	                            local RequestedHits: number? = HighHitreg.Enabled and SwordTiming.HighHits or nil
-	                            local Spacing, SpeedScale, GapMin, AttackCooldown, Stock = SwordTiming.Calculate(SwordSpeed, FuryMultiplier, HighHitreg.Enabled, HitBudget, RequestedHits)
-	                            local Quantized: boolean = Stock and HighHitreg.Enabled and Hitreg.Value ~= "Burst" and HitregTiming.AlignFrames and FrameTime > 1 / 30
-	                            local Variation: number = math.max(HitregTiming.Spread, tick() < HitregTiming.PeakUntil and HitregTiming.Peak or 0)
-	                            local Margin: number = 0
-	                            if Stock and HighHitreg.Enabled and Hitreg.Value ~= "Burst" then
-	                                local Reserve: number = Quantized and FrameTime * 0.5 or 0
-	                                local Minimum: number = not Quantized and HitregTiming.MinimumMargin or 0
-	                                local BootSamples: number = Quantized and math.min(HitregTiming.BootSamples, HitregTiming.FrameBootSamples) or HitregTiming.BootSamples
-	                                local Warmup: number = #TransitSamples < BootSamples and (HitregTiming.ColdMargin + Reserve) or 0
-	                                local AlignedSpacing: number = math.ceil(Spacing / FrameTime) * FrameTime
-	                                local Latency: number = Quantized and ConfirmMin and ConfirmMin >= Spacing and AlignedSpacing < (HitFloor * SpeedScale + 0.05) and FrameTime or 0
-	                                local Scale: number = ConfirmMin and ConfirmMin >= (Spacing * 2) and HitregTiming.LatencyScale or 1
-	                                local Jitter: number = Variation > HitregTiming.Noise and math.clamp(Variation * Scale - math.max(Spacing - HitFloor * SpeedScale, 0) + Reserve, 0, HitregTiming.Margin) or 0
-	                                Margin = math.max(Minimum, Warmup, Latency, Jitter)
-	                            end
-	                            if Stock and HighHitreg.Enabled then
-	                                GapMin = math.max(GapMin + GhostDelay + Margin, AttackSpeed.Value)
-	                            end
-	                            local Precise: boolean = Stock and HighHitreg.Enabled and Hitreg.Value ~= "Burst" and not Quantized
-	                            local Reach: number = getReach(Sword.tool)
-	                            local RangeLimit: number = GetRangeLimit(Reach)
+								table.clear(SwingOnly)
+								for _, v: any in Entities do
+									if not IsCombatTarget(v) then
+										continue
+									end
 	
-	                            table.clear(SwingOnly)
-	                            for _, v: any in Entities do
-	                                if not IsCombatTarget(v) then
-	                                    continue
-	                                end
+									local Delta: Vector3 = (v.RootPart.Position - SelfPosition)
+									local Flat: Vector3 = Delta * FlatScale
+									if AngleSlider.Value < 360 and Flat.Magnitude > 0.001 and math.acos(math.clamp(LocalFacing:Dot(Flat.Unit), -1, 1)) > (math.rad(AngleSlider.Value) / 2) then
+										continue
+									end
 	
-	                                local Delta: Vector3 = (v.RootPart.Position - SelfPosition)
-	                                local Flat: Vector3 = Delta * FlatScale
-	                                if Flat.Magnitude > 0.001 and math.acos(math.clamp(LocalFacing:Dot(Flat.Unit), -1, 1)) > (math.rad(AngleSlider.Value) / 2) then
-	                                    continue
-	                                end
+									local ActualRoot: BasePart? = v.Character.PrimaryPart
+									local _, ServerDistance = GetTargetState(ActualRoot and ActualRoot.Position or v.RootPart.Position, v.RootPart.AssemblyLinearVelocity)
+									local Hittable: boolean = ActualRoot ~= nil and ServerDistance <= RangeLimit
+									local Count: number = #Attacked + #SwingOnly + 1
+									local Target = AttackedPool[Count]
+									if not Target then
+										Target = {}
+										AttackedPool[Count] = Target
+									end
+									Target.Entity = v
+									Target.Delta = Delta
+									Target.Hittable = Hittable
+									Target.Check = Hittable and BoxAttackColor or BoxSwingColor
+									table.insert(Hittable and Attacked or SwingOnly, Target)
+									if #Attacked >= MaxTargets.Value then
+										break
+									end
+								end
 	
-	                                local ActualRoot: BasePart? = v.Character.PrimaryPart
-	                                local _, ServerDistance = GetTargetState(ActualRoot and ActualRoot.Position or v.RootPart.Position, v.RootPart.AssemblyLinearVelocity)
-	                                local Hittable: boolean = ActualRoot ~= nil and ServerDistance <= RangeLimit
-	                                local Count: number = #Attacked + #SwingOnly + 1
-	                                local Target = AttackedPool[Count]
-	                                if not Target then
-	                                    Target = {}
-	                                    AttackedPool[Count] = Target
-	                                end
-	                                Target.Entity = v
-	                                Target.Delta = Delta
-	                                Target.Hittable = Hittable
-	                                Target.Check = Hittable and BoxAttackColor or BoxSwingColor
-	                                table.insert(Hittable and Attacked or SwingOnly, Target)
-	                                if #Attacked >= MaxTargets.Value then
-	                                    break
-	                                end
-	                            end
+								for _, Target: any in SwingOnly do
+									if #Attacked >= MaxTargets.Value then
+										break
+									end
+									table.insert(Attacked, Target)
+								end
 	
-	                            for _, Target: any in SwingOnly do
-	                                if #Attacked >= MaxTargets.Value then
-	                                    break
-	                                end
-	                                table.insert(Attacked, Target)
-	                            end
+								local ServerNow: number? = nil
+								for _, Target: any in Attacked do
+									local v: any = Target.Entity
+									local Delta: Vector3 = Target.Delta
+									TargetInfo.Targets[v] = tick() + 1
+									if TargetInfo.Focus and Target.Hittable then
+										TargetInfo.Focus[v] = tick() + 1
+									end
 	
-	                            for _, Target: any in Attacked do
-	                                local v: any = Target.Entity
-	                                local Delta: Vector3 = Target.Delta
-	                                TargetInfo.Targets[v] = tick() + 1
+									local Swung: boolean = false
+									if not store.attacking then
+										store.attacking = true
+										store.KillauraTarget = v
+										if not Swing.Enabled and AnimDelay < tick() and not LegitAura.Enabled then
+											local SwingDelay: number = math.max(SwingTime:GetRandomValue(), 0.11)
+											AnimDelay = tick() + SwingDelay
+											Swung = true
+											local Mount: Model? = getTinkerMount()
+											if Mount then
+												AnimDelay = tick() + math.max(SwingDelay, 0.35)
+												bedwars.AudioManager:playAudio(bedwars.SoundList.DRILL_ATTACK_1)
+												bedwars.MountAnimationController:playAnimationInMount(Mount, bedwars.AnimationType.TINKER_ATTACK, 1.85)
+											else
+												PlaySwordSwing(SwordMeta, Sword)
+												if DisplayName:find(" Scythe") then
+													bedwars.ScytheController:playLocalAnimation()
+												end
+											end
+											SwingGap = SwingDelay
+											if vape.ThreadFix then
+												setthreadidentity(8)
+											end
+										end
+									end
 	
-	                                local Swung: boolean = false
-	                                if not store.attacking then
-	                                    store.attacking = true
-	                                    store.KillauraTarget = v
-	                                    if not Swing.Enabled and AnimDelay < tick() and not LegitAura.Enabled then
-	                                        local SwingDelay: number = math.max(SwingTime:GetRandomValue(), 0.11)
-	                                        AnimDelay = tick() + SwingDelay
-	                                        Swung = true
-	                                        local Mount: Model? = getTinkerMount()
-	                                        if Mount then
-	                                            AnimDelay = tick() + math.max(SwingDelay, 0.35)
-	                                            bedwars.AudioManager:playAudio(bedwars.SoundList.DRILL_ATTACK_1)
-	                                            bedwars.MountAnimationController:playAnimationInMount(Mount, bedwars.AnimationType.TINKER_ATTACK, 1.85)
-	                                        else
-	                                            bedwars.SwordController:playSwordEffect(SwordMeta, false, {itemSkin = Sword.itemSkin})
-	                                            if DisplayName:find(" Scythe") then
-	                                                bedwars.ScytheController:playLocalAnimation()
-	                                            end
-	                                        end
-	                                        SwingGap = SwingDelay
-	                                        if vape.ThreadFix then
-	                                            setthreadidentity(8)
-	                                        end
-	                                    end
-	                                end
+									if not Target.Hittable then
+										if Swung then
+											SwordSwingMiss:Fire(nil, {
+												weapon = Sword.tool,
+												chargeRatio = 0
+											})
+										end
+										continue
+									end
 	
-	                                if not Target.Hittable then
-	                                    if Swung then
-	                                        SwordSwingMiss:Fire(nil, {
-	                                            weapon = Sword.tool,
-	                                            chargeRatio = 0
-	                                        })
-	                                    end
-	                                    continue
-	                                end
+									if Mode.Sync then
+										ServerSync.Busy = tick() + 0.5
+									end
+									if Cancelled or not SendRoom(285) then
+										continue
+									end
+									ServerNow = ServerNow or workspace:GetServerTimeNow()
+									local GameCooldown: number = Mode.Budget and math.max((bedwars.SwordController.lastAttack + AttackCooldown) - ServerNow, 0) or 0
+									local Deadline: number
+									local SyncFrom: number? = nil
+									local Window: number? = nil
+									if Mode.Sync and ServerSync.Transit then
+										local Last: number = ServerSync.Stamp
+										local Pending: number? = ServerSync.Log[#ServerSync.Log]
+										local Real: boolean = true
+										if Pending and Pending + ServerSync.Transit > Last then
+											Last, Real = Pending + ServerSync.Transit, false
+										end
+										SyncFrom = Real and Last or nil
+										local Scale: number = RealSpeed / 0.3
+										local Offset: number = tick() - ServerNow + Last - ServerSync.Transit
+										Deadline = math.max(LastHit + 0.05, Offset + Mode.Sync[1] * Scale, tick() + GameCooldown)
+										Window = math.max(Deadline, Offset + Mode.Sync[2] * Scale)
+									else
+										Deadline = math.max(NextHit, LastHit + GapMin, tick() + GameCooldown)
+									end
+									local Remaining: number = Deadline - tick()
+									if Remaining > 0 and (Window and (tick() + FrameStep > Window and Remaining < 0.007) or not Window and Remaining < math.min(FrameTime, FrameStep, 0.003)) then
+										local Finish: number = os.clock() + Remaining
+										repeat until os.clock() >= Finish
+										ServerNow = nil
+									end
+									if tick() >= Deadline then
+										local CurrentRoot: BasePart? = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
+										if not Entity.isAlive or CurrentRoot ~= Root or not IsCombatTarget(v) then
+											continue
+										end
+										local ActualRoot: BasePart? = v.Character.PrimaryPart
+										if not ActualRoot then
+											continue
+										end
+										SendPosition = store.rootpart and store.rootpart.Position or CurrentRoot.Position
+										UpdateSelfReference(os.clock(), SendPosition)
+										Delta = v.RootPart.Position - CurrentRoot.Position
+										local TargetPosition, ServerDistance = GetTargetState(ActualRoot.Position, v.RootPart.AssemblyLinearVelocity)
+										local Flat: Vector3 = Delta * FlatScale
+										if ServerDistance > RangeLimit or AngleSlider.Value < 360 and Flat.Magnitude > 0.001 and math.acos(math.clamp((CurrentRoot.CFrame.LookVector * FlatScale):Dot(Flat.Unit), -1, 1)) > (math.rad(AngleSlider.Value) / 2) then
+											continue
+										end
+										local Airborne: boolean = (v.Humanoid and v.Humanoid.FloorMaterial == Enum.Material.Air) or math.abs(v.RootPart.AssemblyLinearVelocity.Y) > 0.01
+										local Hit: boolean = (not Airborne) or HitRandom:NextNumber(0, 100) <= AirHits:GetRandomValue()
+										local HitPosition, Direction = GetSelfClaim(TargetPosition, Reach)
+										bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
+										ServerNow = bedwars.SwordController.lastAttack
+										LastAttack = tick()
+										store.attackReach = (Delta.Magnitude * 100) // 1 / 100
+										store.attackReachUpdate = tick() + 1
+										local Now: number = tick()
+										NextHit = (Now - NextHit >= Spacing) and (Now + Spacing) or (NextHit + Spacing)
+										LastHit = Now
+										if Hit then
+											table.insert(ServerSync.Log, ServerNow)
+											ServerSync.From[ServerNow] = SyncFrom
+											if shared.AetherHitDebug then
+												table.insert(shared.AetherHitDebug, {ServerNow, SyncFrom or ServerSync.Stamp, ServerSync.Transit or 0, 0, tick() - Deadline, v.Character.Name, ServerDistance, RangeLimit, (HitPosition - TargetPosition).Magnitude, (ActualRoot.Position - CurrentRoot.Position).Magnitude, v.RootPart.AssemblyLinearVelocity.Magnitude, Airborne and 1 or 0, v.Health, #Attacked})
+											end
+											if #ServerSync.Log > 8 then
+												ServerSync.From[table.remove(ServerSync.Log, 1)] = nil
+											end
+											local Payload = {
+												weapon = Sword.tool,
+												chargedAttack = {chargeRatio = 0},
+												entityInstance = v.Character,
+												validate = {
+													raycast = {
+														cameraPosition = {value = HitPosition},
+														cursorDirection = {value = Direction}
+													},
+													targetPosition = {value = TargetPosition},
+													selfPosition = {value = HitPosition}
+												}
+											}
+											LogSend()
+											AttackRemote:Fire(nil, Payload)
+											if not getTinkerMount() then
+												bedwars.swordSound(SwordMeta, Sword.itemSkin)
+											end
+											if Mode.Backup and not (Mode.Sync and ServerSync.Transit) then
+												for _, Backup: number in Mode.Backup do
+													task.delay(Backup, function()
+														if Killaura.Enabled and Session == Current and Payload.entityInstance.Parent and SendRoom(200) then
+															LogSend()
+															AttackRemote:Fire(nil, Payload)
+														end
+													end)
+												end
+											end
+											if FastHits.Enabled and not FastHitPending and tick() > LastShot then
+												local Projectiles = GetShots()
+												if #Projectiles > 0 then
+													ProjectileIndex += 1
+													if not Projectiles[ProjectileIndex] then
+														ProjectileIndex = 1
+													end
 	
-	                                local GameCooldown: number = math.max((bedwars.SwordController.lastAttack + AttackCooldown) - workspace:GetServerTimeNow(), 0)
-	                                local HitDelay: number = Hitreg.Value == "Burst" and math.max(GhostDelay, AttackSpeed.Value, BurstWait) or math.max(HitBudget, Spacing + GhostDelay + Margin, AttackSpeed.Value, GameCooldown)
-	                                local Deadline: number = math.max(SwingCooldown + HitDelay, LastHit + GapMin, tick() + GameCooldown)
-	                                local Tracked: boolean = Hitreg.Value ~= "Burst" and type(v.Character:GetAttribute("LastDamageTakenTime")) == "number"
-	                                local LatencyGuard, Waiting = Tracked and Stock and HighHitreg.Enabled and LocalPlayer:GetNetworkPing() >= 0.12, false
-	                                if Tracked then
-	                                    Deadline = math.max(Deadline, math.min(HitDeadline, LastHit + HitDelay + HitregTiming.HoldCap))
-	                                end
-	                                local Locked: boolean = Stock and HighHitreg.Enabled and Hitreg.Value ~= "Burst" and LocalPlayer:GetNetworkPing() < HitregTiming.LockPing
-	                                if Locked then
-	                                    local Latest = LockSends[#LockSends]
-	                                    if Latest and not Latest.Done and os.clock() - LockSent > 0.25 + LockFrame * 2 then
-	                                        Latest.Done = true
-	                                        LockStamp = 0
-	                                        LockOffset = nil
-	                                        LockSearch = true
-	                                        LockSpace = SwordTiming.HighSpacing
-	                                        LockTarget = LockSent + HitregTiming.LockGhost
-	                                    end
-	                                    LockSpace = math.max(Spacing, HitBudget, AttackCooldown)
-	                                    if LockTarget > 0 and os.clock() - LockTarget > 0.05 then
-	                                        if os.clock() - LockTarget < 10 then
-	                                            LockTarget += math.ceil((os.clock() - LockTarget) / HitregTiming.LockTick) * HitregTiming.LockTick
-	                                        else
-	                                            LockTarget, LockStamp, LockSearch, LockOffset = 0, 0, true, nil
-	                                            LockSpace = SwordTiming.HighSpacing
-	                                        end
-	                                    end
-	                                    Deadline = math.max(Deadline, LastHit + HitregTiming.LockFloor, tick() + LockTarget - os.clock())
-	                                end
-	                                local Retry: boolean = false
-	                                if RetryAt > 0 and tick() >= RetryAt then
-	                                    local Unconfirmed: any = HitPending[#HitPending]
-	                                    if not Unconfirmed or Unconfirmed.sent ~= LastHit then
-	                                        RetryAt = 0
-	                                    elseif Unconfirmed.target == v.Character then
-	                                        RetryAt = 0
-	                                        Retry = Tracked and AttackRemote:GetCurrentRequests() < AttackRemote:GetRateLimit() * HitregTiming.RetryBudget
-	                                        if Retry then
-	                                            Deadline = tick()
-	                                            RetryUntil = tick() + HitregTiming.RetryHold
-	                                        end
-	                                    end
-	                                end
-	                                if LatencyGuard then
-	                                    local Pending = HitPending[#HitPending]
-	                                    if Pending and #HitPending >= 3 and ConfirmMin and (ConfirmMin + FrameTime) > HitDelay and Pending.sent == LastHit then
-	                                        Deadline = math.max(Deadline, LastHit + ConfirmMin + FrameTime)
-	                                        Waiting = true
-	                                    end
-	                                end
-	                                local Remaining: number = Deadline - tick()
-	                                if Precise and not Waiting and Remaining > 0 and Remaining < math.min(FrameTime, FrameStep, 0.25) then
-	                                    task.wait(Remaining)
-	                                end
-	                                if tick() >= Deadline then
-	                                    local CurrentRoot: BasePart? = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
-	                                    if not Entity.isAlive or CurrentRoot ~= Root or not IsCombatTarget(v) then
-	                                        continue
-	                                    end
-	                                    local ActualRoot: BasePart? = v.Character.PrimaryPart
-	                                    if not ActualRoot then
-	                                        continue
-	                                    end
-	                                    SendPosition = store.rootpart and store.rootpart.Position or CurrentRoot.Position
-	                                    UpdateSelfReference(os.clock(), SendPosition)
-	                                    Delta = v.RootPart.Position - CurrentRoot.Position
-	                                    local TargetPosition, ServerDistance = GetTargetState(ActualRoot.Position, v.RootPart.AssemblyLinearVelocity)
-	                                    local Flat: Vector3 = Delta * FlatScale
-	                                    if ServerDistance > RangeLimit or Flat.Magnitude > 0.001 and math.acos(math.clamp((CurrentRoot.CFrame.LookVector * FlatScale):Dot(Flat.Unit), -1, 1)) > (math.rad(AngleSlider.Value) / 2) then
-	                                        continue
-	                                    end
-	                                    local Airborne: boolean = (v.Humanoid and v.Humanoid.FloorMaterial == Enum.Material.Air) or math.abs(v.RootPart.AssemblyLinearVelocity.Y) > 0.01
-	                                    local Hit: boolean = (not Airborne) or HitRandom:NextNumber(0, 100) <= AirHits:GetRandomValue()
-	                                    local HitPosition, Direction = GetSelfClaim(TargetPosition, Reach)
-	                                    bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
-	                                    LastAttack = tick()
-	                                    store.attackReach = (Delta.Magnitude * 100) // 1 / 100
-	                                    store.attackReachUpdate = tick() + 1
-	                                    SwingCooldown = Retry and SwingCooldown or math.max(SwingCooldown + HitDelay, tick() - (Stock and HighHitreg.Enabled and Hitreg.Value ~= "Burst" and math.min(FrameTime, HitDelay - HitFloor * SpeedScale) or 0))
-	                                    LastHit = tick()
-	                                    if Hitreg.Value == "Burst" then
-	                                        BurstShots += 1
-	                                        if BurstShots >= BurstHits.Value then
-	                                            BurstShots = 0
-	                                            BurstWait = math.max(BurstDelay.Value / 1000, (BurstHits.Value * HitBudget) - ((BurstHits.Value - 1) * math.max(GhostDelay, AttackSpeed.Value, 0.03)))
-	                                        else
-	                                            BurstWait = math.max(GhostDelay, AttackSpeed.Value, 0.03)
-	                                        end
-	                                    end
-	                                    if Hit then
-	                                        if Tracked then
-	                                            local Lifetime: number = HitregTiming.MatchTransit and GetHitLifetime() or 1
-	                                            local PendingLimit: number = HitregTiming.MatchTransit and math.max(8, math.ceil(Lifetime / Spacing) + 2) or 8
-	                                            while HitPending[1] and ((HitregTiming.MatchTransit and (os.clock() - HitPending[1].timer) or (tick() - HitPending[1].sent)) > Lifetime or #HitPending >= PendingLimit) do
-	                                                table.remove(HitPending, 1)
-	                                            end
-	                                            table.insert(HitPending, {target = v.Character, sent = LastHit, timer = os.clock(), clock = workspace:GetServerTimeNow(), gap = ArrivalFloor * SpeedScale})
-	                                        end
-	                                        if Tracked then
-	                                            local Timeout: number = math.max(0.3 + (store.ping.total or 0), LocalPlayer:GetNetworkPing() * 2 + 0.3)
-	                                            if HitregTiming.MatchTransit and not ConfirmMin then
-	                                                Timeout = math.max(Timeout, GetHitLifetime())
-	                                            end
-	                                            if Stock and HighHitreg.Enabled and Hitreg.Value ~= "Burst" and HitregTiming.RecoveryCap > 0 then
-	                                                Timeout = math.max(Timeout, FrameTime * 2 + 0.1, (ConfirmMin or 0) + HitregTiming.Spread + FrameTime + 0.1)
-	                                            end
-	                                            table.insert(GhostPending, tick() + Timeout)
-	                                        end
-	                                        if Locked then
-	                                            local Now: number = os.clock()
-	                                            if LockTarget == 0 or math.abs(Now - LockTarget) > 0.05 then
-	                                                LockTarget = Now
-	                                            end
-	                                            LockTarget += LockSpace
-	                                            LockSent = Now
-	                                            table.insert(LockSends, {Srv = workspace:GetServerTimeNow(), Done = false})
-	                                            if #LockSends > 6 then
-	                                                table.remove(LockSends, 1)
-	                                            end
-	                                        end
-	                                        AttackRemote:Fire(nil, {
-	                                            weapon = Sword.tool,
-	                                            chargedAttack = {chargeRatio = 0},
-	                                            entityInstance = v.Character,
-	                                            validate = {
-	                                                raycast = {
-	                                                    cameraPosition = {value = HitPosition},
-	                                                    cursorDirection = {value = Direction}
-	                                                },
-	                                                targetPosition = {value = TargetPosition},
-	                                                selfPosition = {value = HitPosition}
-	                                            }
-	                                        })
-	                                        RetryAt = 0
-	                                        if Tracked and not Retry and Stock and HighHitreg.Enabled and ConfirmMin and tick() < RetryUntil then
-	                                            local RetryWait: number = ConfirmMin + HitregTiming.Spread + HitregTiming.RetryMargin
-	                                            RetryAt = RetryWait <= HitregTiming.RetryCap and tick() + RetryWait or 0
-	                                        end
-	                                        if FastHits.Enabled and not FastHitPending and tick() > LastShot then
-	                                            local Projectiles = GetShots()
-	                                            if #Projectiles > 0 then
-	                                                ProjectileIndex += 1
-	                                                if not Projectiles[ProjectileIndex] then
-	                                                    ProjectileIndex = 1
-	                                                end
+													local Item, Ammo, Projectile, ItemMeta = unpack(Projectiles[ProjectileIndex])
+													local ProjectileMeta = bedwars.ProjectileMeta[Projectile]
+													if tick() > (FireRates[Item.itemType] or 0) and ProjectileMeta and type(ProjectileMeta.launchVelocity) == "number" then
+														local ProjectileSpeed, Gravity = ProjectileMeta.launchVelocity, ProjectileMeta.gravitationalAcceleration or 196.2
+														local OldHotbar, OldTool = store.inventory.hotbarSlot, store.hand.tool
+														local Hotbar = getHotbar(Item.tool)
+														if Hotbar then
+															switchItem(Item.tool, 0.1)
+															if Legit.Enabled then
+																hotbarSwitch(Hotbar)
+															end
+														end
 	
-	                                                local Item, Ammo, Projectile, ItemMeta = unpack(Projectiles[ProjectileIndex])
-	                                                local ProjectileMeta = bedwars.ProjectileMeta[Projectile]
-	                                                if tick() > (FireRates[Item.itemType] or 0) and ProjectileMeta and type(ProjectileMeta.launchVelocity) == "number" then
-	                                                    local ProjectileSpeed, Gravity = ProjectileMeta.launchVelocity, ProjectileMeta.gravitationalAcceleration or 196.2
-	                                                    local OldHotbar, OldTool = store.inventory.hotbarSlot, store.hand.tool
-	                                                    local Hotbar = getHotbar(Item.tool)
-	                                                    if Hotbar then
-	                                                        switchItem(Item.tool, 0.1)
-	                                                        if Legit.Enabled then
-	                                                            hotbarSwitch(Hotbar)
-	                                                        end
-	                                                    end
+														local RootPosition: Vector3 = v.RootPart.Position
+														local ShootPosition: Vector3 = (CFrame.new(SendPosition, RootPosition) * CFrame.new(Vector3.new(-bedwars.BowConstantsTable.RelX, -bedwars.BowConstantsTable.RelY, -bedwars.BowConstantsTable.RelZ))).Position
+														local AimPosition, _, TravelTime = PredictionLib.SolveTrajectory(ShootPosition, ProjectileSpeed, Gravity, RootPosition, v.RootPart.AssemblyLinearVelocity, workspace.Gravity, v.HipHeight, v.Jumping and 42.6 or nil, nil, v.Humanoid.FloorMaterial == Enum.Material.Air or math.abs(v.RootPart.AssemblyLinearVelocity.Y) > 0.01, v.RootPart.Position, v.RootPart, nil, true)
+														local Clear: boolean = false
+														if AimPosition and TravelTime then
+															local IgnoreList: {Instance} = {Camera, LocalPlayer.Character}
+															for _, Ent: any in Entity.List do
+																if Ent.Character then
+																	table.insert(IgnoreList, Ent.Character)
+																end
+															end
+															ArcCheck.FilterDescendantsInstances = IgnoreList
+															Clear = PredictionLib.IsTrajectoryClear(ShootPosition, AimPosition - ShootPosition, Gravity, TravelTime, ArcCheck)
+														end
+														if AimPosition and Clear then
+															local ShotDirection, ShotId = CFrame.lookAt(ShootPosition, AimPosition).LookVector, bedwars.IdUtil.generateId(8)
 	
-	                                                    local RootPosition: Vector3 = v.RootPart.Position
-	                                                    local ShootPosition: Vector3 = (CFrame.new(SendPosition, RootPosition) * CFrame.new(Vector3.new(-bedwars.BowConstantsTable.RelX, -bedwars.BowConstantsTable.RelY, -bedwars.BowConstantsTable.RelZ))).Position
-	                                                    local AimPosition, _, TravelTime = Prediction.SolveTrajectory(ShootPosition, ProjectileSpeed, Gravity, RootPosition, v.RootPart.AssemblyLinearVelocity, workspace.Gravity, v.HipHeight, v.Jumping and 42.6 or nil, nil, v.Humanoid.FloorMaterial == Enum.Material.Air or math.abs(v.RootPart.AssemblyLinearVelocity.Y) > 0.01, v.RootPart.Position, v.RootPart, nil, true)
-	                                                    local Clear: boolean = false
-	                                                    if AimPosition and TravelTime then
-	                                                        local IgnoreList: {Instance} = {Camera, LocalPlayer.Character}
-	                                                        for _, Ent: any in Entity.List do
-	                                                            if Ent.Character then
-	                                                                table.insert(IgnoreList, Ent.Character)
-	                                                            end
-	                                                        end
-	                                                        ArcCheck.FilterDescendantsInstances = IgnoreList
-	                                                        Clear = Prediction.IsTrajectoryClear(ShootPosition, AimPosition - ShootPosition, Gravity, TravelTime, ArcCheck)
-	                                                    end
-	                                                    if AimPosition and Clear then
-	                                                        local ShotDirection, ShotId = CFrame.lookAt(ShootPosition, AimPosition).LookVector, bedwars.IdUtil.generateId(8)
+															FastHitPending = true
+															watchProjectile(ShotId, ShootPosition, ShotDirection * ProjectileSpeed, Gravity, v, ProjectileMeta.lifetimeSec)
+															PredictionLib.trackShot(v.RootPart)
+															FireRates[Item.itemType] = tick() + (ItemMeta.fireDelaySec or 0.1)
+															LastShot = tick() + FireRate.Value
+															task.spawn(function()
+																local Response = ProjectileRemote:Fire("CallServer",
+																	Item.tool,
+																	Ammo,
+																	Projectile,
+																	ShootPosition,
+																	SendPosition,
+																	ShotDirection * ProjectileSpeed,
+																	ShotId,
+																	bedwars.getShotData(Item.itemType),
+																	workspace:GetServerTimeNow() - ((store.ping.total or 0) / 10)
+																)
+																FastHitPending = false
+																if type(Response) == "table" and Response.accepted then
+																	local LaunchSound = ItemMeta.launchSound
+																	LaunchSound = LaunchSound and LaunchSound[math.random(1, #LaunchSound)] or nil
+																	if LaunchSound then
+																		bedwars.AudioManager:playAudio(LaunchSound)
+																	end
+																end
+															end)
+														end
+														if OldTool then
+															switchItem(OldTool)
+														end
+														task.spawn(function()
+															if Legit.Enabled then
+																hotbarSwitch(OldHotbar)
+															end
+														end)
+													end
+												end
+											end
+										else
+											SwordSwingMiss:Fire(nil, {
+												weapon = Sword.tool,
+												chargeRatio = 0
+											})
+										end
+									end
+								end
+							end
+						else
+							ScanClock = 0
+						end
 	
-	                                                        FastHitPending = true
-	                                                        watchProjectile(ShotId, ShootPosition, ShotDirection * ProjectileSpeed, Gravity, v, ProjectileMeta.lifetimeSec)
-	                                                        Prediction.trackShot(v.RootPart)
-	                                                        FireRates[Item.itemType] = tick() + (ItemMeta.fireDelaySec or 0.1)
-	                                                        LastShot = tick() + FireRate.Value
-	                                                        task.spawn(function()
-	                                                            local Response = ProjectileRemote:Fire("CallServer",
-	                                                                Item.tool,
-	                                                                Ammo,
-	                                                                Projectile,
-	                                                                ShootPosition,
-	                                                                SendPosition,
-	                                                                ShotDirection * ProjectileSpeed,
-	                                                                ShotId,
-	                                                                bedwars.getShotData(Item.itemType),
-	                                                                workspace:GetServerTimeNow() - ((store.ping.total or 0) / 10)
-	                                                            )
-	                                                            FastHitPending = false
-	                                                            if type(Response) == "table" and Response.accepted then
-	                                                                bedwars.playLaunchSound(Item, ItemMeta)
-	                                                            end
-	                                                        end)
-	                                                    end
-	                                                    if OldTool then
-	                                                        switchItem(OldTool)
-	                                                    end
-	                                                    task.spawn(function()
-	                                                        if Legit.Enabled then
-	                                                            hotbarSwitch(OldHotbar)
-	                                                        end
-	                                                    end)
-	                                                end
-	                                            end
-	                                        end
-	                                    else
-	                                        SwordSwingMiss:Fire(nil, {
-	                                            weapon = Sword.tool,
-	                                            chargeRatio = 0
-	                                        })
-	                                    end
-	                                end
-	                            end
-	                        end
-	                    else
-	                        ScanClock = 0
-	                    end
+						if #Attacked > 0 then
+							ContinueUntil = tick() + (ContinueSwing:GetRandomValue() / 1000)
+						elseif Sword and SwordMeta and tick() < ContinueUntil and AnimDelay < tick() and not Swing.Enabled and not LegitAura.Enabled then
+							local SwingDelay: number = math.max(SwingTime:GetRandomValue(), 0.11)
+							AnimDelay = tick() + SwingDelay
+							local Mount: Model? = getTinkerMount()
+							if Mount then
+								AnimDelay = tick() + math.max(SwingDelay, 0.35)
+								bedwars.AudioManager:playAudio(bedwars.SoundList.DRILL_ATTACK_1)
+								bedwars.MountAnimationController:playAnimationInMount(Mount, bedwars.AnimationType.TINKER_ATTACK, 1.85)
+							else
+								PlaySwordSwing(SwordMeta, Sword)
+								bedwars.swordSound(SwordMeta, Sword.itemSkin)
+							end
+							SwingGap = SwingDelay
+							SwordSwingMiss:Fire(nil, {
+								weapon = Sword.tool,
+								chargeRatio = 0
+							})
+						end
 	
-	                    do
-	                        local Ghosted: boolean = false
-	                        local Recovery: boolean = HighHitreg.Enabled and Hitreg.Value ~= "Burst" and SwordMeta and SwordMeta.sword and SwordMeta.sword.attackSpeed == 0.3 and HitregTiming.RecoveryCap > 0 or false
-	                        if #Attacked == 0 then
-	                            table.clear(GhostPending)
-	                        end
-	                        while GhostPending[1] and tick() > GhostPending[1] do
-	                            table.remove(GhostPending, 1)
-	                            Ghosted = true
-	                        end
+						store.killauraNextHit = store.attacking and NextHit or nil
+						UpdateVisuals(Attacked, BoxData)
 	
-	                        if Ghosted then
-	                            RetryUntil = tick() + HitregTiming.RetryHold
-	                            GhostCount = (tick() < GhostWindow and GhostCount or 0) + 1
-	                            GhostWindow = tick() + 5
-	                            if GhostCount > (Recovery and 0 or 1) and tick() > GhostStep then
-	                                GhostStep = tick() + 1
-	                                GhostHold = tick() + (Recovery and HitregTiming.MarginHold or HighHitreg.Enabled and 2 or 10)
-	                                GhostDelay = math.min(GhostDelay + (Recovery and HitregTiming.RecoveryStep or HighHitreg.Enabled and 0.001 or 0.003), Recovery and HitregTiming.RecoveryCap or HighHitreg.Enabled and (10 / 36 - CleanFloor) or 0.1)
-	                            end
-	                        elseif GhostDelay > 0 and tick() > GhostHold then
-	                            GhostHold = tick() + (Recovery and HitregTiming.MarginHold or HighHitreg.Enabled and 2 or 10)
-	                            GhostDelay = math.max(GhostDelay - (HighHitreg.Enabled and 0.001 or 0.003), 0)
-	                        end
-	                    end
+						if Face.Enabled and Attacked[1] then
+							local Facing: BasePart = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart or Entity.character.RootPart
+							local FlatPosition: Vector3 = Attacked[1].Entity.RootPart.Position * FlatScale
+							Facing.CFrame = CFrame.lookAt(Facing.Position, Vector3.new(FlatPosition.X, Facing.Position.Y + 0.001, FlatPosition.Z))
+						end
 	
-	                    if #Attacked > 0 then
-	                        ContinueUntil = tick() + (ContinueSwing:GetRandomValue() / 1000)
-	                    elseif Sword and SwordMeta and tick() < ContinueUntil and AnimDelay < tick() and not Swing.Enabled and not LegitAura.Enabled then
-	                        local SwingDelay: number = math.max(SwingTime:GetRandomValue(), 0.11)
-	                        AnimDelay = tick() + SwingDelay
-	                        local Mount: Model? = getTinkerMount()
-	                        if Mount then
-	                            AnimDelay = tick() + math.max(SwingDelay, 0.35)
-	                            bedwars.AudioManager:playAudio(bedwars.SoundList.DRILL_ATTACK_1)
-	                            bedwars.MountAnimationController:playAnimationInMount(Mount, bedwars.AnimationType.TINKER_ATTACK, 1.85)
-	                        else
-	                            bedwars.SwordController:playSwordEffect(SwordMeta, false, {itemSkin = Sword.itemSkin})
-	                        end
-	                        SwingGap = SwingDelay
-	                        SwordSwingMiss:Fire(nil, {
-	                            weapon = Sword.tool,
-	                            chargeRatio = 0
-	                        })
-	                    end
-	
-	                    UpdateVisuals(Attacked, BoxData)
-	
-	                    if Face.Enabled and Attacked[1] then
-	                        local Facing: BasePart = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart or Entity.character.RootPart
-	                        local FlatPosition: Vector3 = Attacked[1].Entity.RootPart.Position * FlatScale
-	                        Facing.CFrame = CFrame.lookAt(Facing.Position, Vector3.new(FlatPosition.X, Facing.Position.Y + 0.001, FlatPosition.Z))
-	                    end
-	
-	                    task.wait()
-	                until not Killaura.Enabled or Session ~= Current
-	            end)()
-	        else
-	            store.KillauraTarget = nil
-	            table.clear(GhostPending)
-	            table.clear(HitPending)
-	            table.clear(TransitSamples)
-	            table.clear(TransitRecent)
-	            HitregTiming.Spread = 0
-	            HitregTiming.Peak = 0
-	            HitregTiming.PeakUntil = 0
-	            HitDeadline, TransitMin, ConfirmMin = 0, nil, nil
-	            for _, v: BoxHandleAdornment in Boxes do
-	                if vape.ThreadFix then
-	                    setthreadidentity(8)
-	                end
-	                v.Adornee = nil
-	                if vape.ThreadFix then
-	                    setthreadidentity(8)
-	                end
-	                v.Size = Vector3.zero
-	            end
-	            for _, v: Part in Particles do
-	                if vape.ThreadFix then
-	                    setthreadidentity(8)
-	                end
-	                v.Parent = nil
-	                ParticleShown[v] = false
-	            end
-	            debug.setupvalue(SwordEffect, 7, bedwars.Knit)
-	            debug.setupvalue(bedwars.ScytheController.playLocalAnimation, 3, bedwars.Knit)
-	            if bedwars.SwordController.playSwordEffect == SwingHook then
-	                bedwars.SwordController.playSwordEffect = OldSwing
-	            end
-	            OldSwing = nil
-	            SwingHook = nil
-	            LastAttack = 0
-	            store.attacking = false
-	            if ArmC0 and ArmWrist and ArmWrist.Parent then
-	                AnimTween = TweenService:Create(ArmWrist, TweenInfo.new(AnimationTween.Enabled and 0.001 or 0.3, Enum.EasingStyle.Exponential), {
-	                    C0 = ArmC0
-	                })
-	                AnimTween:Play()
-	            end
-	
-	            if UserInputService.TouchEnabled then
-	                pcall(function()
-	                    LocalPlayer.PlayerGui.MobileUI["2"].Visible = true
-	                end)
-	            end
-	        end
-	    end,
-	    Tooltip = "Attack players around you\nwithout aiming at them."
+						task.wait()
+					until not Killaura.Enabled or Session ~= Current
+				end)()
+			else
+				store.KillauraTarget = nil
+				store.killauraNextHit = nil
+				NextHit = 0
+				ResetSync()
+				table.clear(BoxShown)
+				for _, v: BoxHandleAdornment in Boxes do
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					v.Adornee = nil
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					v.Size = Vector3.zero
+				end
+				for _, v: Part in Particles do
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					v.Parent = nil
+					ParticleShown[v] = false
+				end
+				debug.setupvalue(SwordEffect, 7, bedwars.Knit)
+				debug.setupvalue(bedwars.ScytheController.playLocalAnimation, 3, bedwars.Knit)
+				if bedwars.SwordController.playSwordEffect == SwingHook then
+					bedwars.SwordController.playSwordEffect = OldSwing
+				end
+				OldSwing = nil
+				SwingHook = nil
+				if ServerSync.SendHook and bedwars.SwordController.sendServerRequest == ServerSync.SendHook then
+					bedwars.SwordController.sendServerRequest = ServerSync.OldSend
+					ServerSync.SendHook, ServerSync.OldSend = nil, nil
+				end
+				LastAttack = 0
+				store.attacking = false
+				if ArmC0 and ArmWrist and ArmWrist.Parent then
+					AnimTween = TweenService:Create(ArmWrist, TweenInfo.new(AnimationTween.Enabled and 0.001 or 0.3, Enum.EasingStyle.Exponential), {
+						C0 = ArmC0
+					})
+					AnimTween:Play()
+				end
+			end
+		end,
+		Tooltip = 'Attacks players around you without aiming'
 	})
 	
 	Targets = Killaura:CreateTargets({
-	    Players = true,
-	    NPCs = true
+		Players = true,
+		NPCs = true
 	})
 	local Methods: {string} = {"Damage", "Distance"}
 	for _, v: string in sortlist do
-	    if not table.find(Methods, v) then
-	        table.insert(Methods, v)
-	    end
+		if not table.find(Methods, v) then
+			table.insert(Methods, v)
+		end
 	end
 	SwingRange = Killaura:CreateSlider({
-	    Name = "Swing range",
-	    Min = 1,
-	    Max = 28,
-	    Default = 28,
-	    Suffix = function(Val: number)
-	        return Val == 1 and "stud" or "studs"
-	    end
+		Name = "Swing range",
+		Min = 1,
+		Max = 28,
+		Default = 28,
+		Suffix = function(Val: number)
+			return Val == 1 and "stud" or "studs"
+		end
 	})
 	AttackRange = Killaura:CreateSlider({
-	    Name = "Attack range",
-	    Min = 1,
-	    Max = 18.1,
-	    Default = 18.1,
-	    Suffix = function(Val: number)
-	        return Val == 1 and "stud" or "studs"
-	    end,
-	    Tooltip = "Maximum distance to attack a target, including targets above or below you\nMeasured where the server sees both of you, so a target running at you has less reach than one running away"
+		Name = "Attack range",
+		Min = 1,
+		Max = 18.1,
+		Default = 18.1,
+		Suffix = function(Val: number)
+			return Val == 1 and "stud" or "studs"
+		end,
+		Tooltip = 'How far away a target can be'
 	})
 	Killaura:CreateButton({
-	    Name = "Sync to legit ranges",
-	    Function = function()
-	        local Reach: number = getReach(store.tools.sword and store.tools.sword.tool)
-	        SwingRange:SetValue(Reach)
-	        AttackRange:SetValue(Reach)
-	    end,
-	    Tooltip = "Drops every range down to what the sword in your toolset actually reaches"
+		Name = "Sync to legit ranges",
+		Function = function()
+			local Reach: number = getReach(store.tools.sword and store.tools.sword.tool)
+			SwingRange:SetValue(Reach)
+			AttackRange:SetValue(Reach)
+		end,
+		Tooltip = 'Limits the range to what the game allows'
+	})
+	AutoTool = Killaura:CreateGroup({
+		Name = "Auto tool",
+		Tooltip = "Switches to your best sword when an enemy comes close"
+	})
+	AutoToolRange = AutoTool:CreateSlider({
+		Name = "Auto tool range",
+		Min = 1,
+		Max = 28,
+		Default = 18.1,
+		Decimal = 10,
+		Suffix = function(Val: number)
+			return Val == 1 and "stud" or "studs"
+		end,
+		Tooltip = "How close an enemy must be before your sword is taken out"
 	})
 	AngleSlider = Killaura:CreateSlider({
-	    Name = "Max angle",
-	    Min = 1,
-	    Max = 360,
-	    Default = 360
+		Name = "Max angle",
+		Min = 1,
+		Max = 360,
+		Default = 360
 	})
 	AirHits = Killaura:CreateTwoSlider({
-	    Name = "Air hit chance",
-	    Min = 0,
-	    Max = 100,
-	    DefaultMin = 100,
-	    DefaultMax = 100,
-	    Tooltip = "Chance to land a hit while the target is off the ground, rolled fresh between the two values on every swing"
+		Name = "Air hit chance",
+		Min = 0,
+		Max = 100,
+		DefaultMin = 100,
+		DefaultMax = 100,
+		Tooltip = 'Chance to attack a target that is in the air'
 	})
 	SwingTime = Killaura:CreateTwoSlider({
-	    Name = "Swing time",
-	    Min = 0.11,
-	    Max = 2,
-	    DefaultMin = 0.11,
-	    DefaultMax = 0.11,
-	    Decimal = 100,
-	    Tooltip = "Seconds between swing animations, rolled fresh between the two values on every swing"
+		Name = "Swing time",
+		Min = 0.11,
+		Max = 2,
+		DefaultMin = 0.11,
+		DefaultMax = 0.11,
+		Decimal = 100,
+		Tooltip = 'Time between swing animations'
 	})
-	AttackSpeed = Killaura:CreateSlider({
-	    Name = "Attack speed",
-	    Min = 0,
-	    Max = 1,
-	    Decimal = 100,
-	    Default = 0,
-	    Suffix = function(Val: number)
-	        return Val == 1 and "second" or "seconds"
-	    end
+	HitregMode = Killaura:CreateDropdown({
+		Name = "Hitreg",
+		List = {"Legit", "High", "Extra High", "Max"},
+		Default = "High",
+		Function = function()
+			NextHit = 0
+			ResetSync()
+		end,
+		Tooltip = 'Legit - 33 hits per 10 seconds\nHigh - 34\nExtra High - 35\nMax - 36\nSlower swords scale to their own speed'
 	})
-	HighHitreg = Killaura:CreateToggle({
-	    Name = "High hitreg",
-	    Default = true,
-	    Function = function(Callback: boolean)
-	        GhostDelay, GhostHold, GhostStep, GhostCount, GhostWindow = 0, 0, 0, 0, 0
-	        RetryAt, RetryUntil = 0, 0
-	        table.clear(GhostPending)
-	        table.clear(HitPending)
-	        table.clear(TransitSamples)
-	        table.clear(TransitRecent)
-	        HitregTiming.Spread = 0
-	        HitregTiming.Peak = 0
-	        HitregTiming.PeakUntil = 0
-	        HitDeadline, TransitMin, ConfirmMin = 0, nil, nil
-	    end,
-	    Tooltip = "Adapts sword timing to reduce ghost hits"
-	})
-	local LoadHighHitreg, SaveHighHitreg = HighHitreg.Load, HighHitreg.Save
-	function HighHitreg:Load(Data)
-	    if Data.Version ~= 1 then
-	        Data = table.clone(Data)
-	        Data.Enabled = true
-	    end
-	
-	    LoadHighHitreg(self, Data)
-	end
-	
-	function HighHitreg:Save(Data)
-	    SaveHighHitreg(self, Data)
-	    Data[self.Name].Version = 1
-	end
-	Hitreg = {Value = "Stable"}
 	MaxTargets = Killaura:CreateSlider({
-	    Name = "Max targets",
-	    Min = 1,
-	    Max = 5,
-	    Default = 5
+		Name = "Max targets",
+		Min = 1,
+		Max = 5,
+		Default = 5
 	})
 	Sort = Killaura:CreateDropdown({
-	    Name = "Target Mode",
-	    List = Methods
+		Name = "Target Mode",
+		List = Methods
 	})
-	FastHits = Killaura:CreateToggle({
-	    Name = "Fast Hits",
-	    Function = function(Callback: boolean)
-	        Legit.Object.Visible = Callback
-	        FireRate.Object.Visible = Callback
-	        Whitelist.Object.Visible = Callback
-	        UseSophia.Object.Visible = Callback
-	        UseWhim.Object.Visible = Callback
-	        UseNazar.Object.Visible = Callback
-	        UseUmeko.Object.Visible = Callback
-	        UseLasso.Object.Visible = Callback
-	    end,
-	    Default = false,
-	    Tooltip = "Deals more damage quicker using projectiles"
+	FastHits = Killaura:CreateGroup({
+		Name = "Fast Hits",
+		Default = false,
+		Tooltip = 'Mixes projectiles in with your hits for more damage'
 	})
-	Whitelist = Killaura:CreateTextList({
-	    Name = "Projectiles",
-	    Default = {"arrow", "snowball"},
-	    Darker = true,
-	    Visible = false,
-	    Tooltip = "Projectiles to use for fasthits"
+	Whitelist = FastHits:CreateTextList({
+		Name = "Projectiles",
+		Default = {"arrow", "snowball"},
+		Darker = true,
+		Tooltip = 'Projectiles to use'
 	})
-	UseSophia = Killaura:CreateToggle({
-	    Name = "Use sophia",
-	    Darker = true,
-	    Visible = false,
-	    Tooltip = "Also shoots sophia's frost staff, swapping it out of mist mode on its own"
+	AlsoUse = FastHits:CreateMultiDropdown({
+		Name = "Also use",
+		List = {"Sophia", "Whim", "Nazar", "Umeko", "Lasso", "Fireball", "Gloop"},
+		Default = {},
+		Darker = true,
+		Tooltip = 'Extra weapons to fire as well'
 	})
-	UseWhim = Killaura:CreateToggle({
-	    Name = "Use whim",
-	    Darker = true,
-	    Visible = false,
-	    Tooltip = "Also casts whim's magic book, follows whatever element you have cycled"
+	Legit = FastHits:CreateToggle({
+		Name = "Legit Switch",
+		Darker = true
 	})
-	UseNazar = Killaura:CreateToggle({
-	    Name = "Use nazar",
-	    Darker = true,
-	    Visible = false,
-	    Tooltip = "Also shoots nazar's life bow, crossbow and headhunter"
-	})
-	UseUmeko = Killaura:CreateToggle({
-	    Name = "Use umeko",
-	    Darker = true,
-	    Visible = false,
-	    Tooltip = "Also throws umeko's chakram, waiting for it to come back between throws"
-	})
-	UseLasso = Killaura:CreateToggle({
-	    Name = "Use Lasso",
-	    Darker = true,
-	    Visible = false,
-	    Tooltip = "Also throws lassy's lasso, waiting out its cooldown between throws"
-	})
-	Legit = Killaura:CreateToggle({
-	    Name = "Legit Switch",
-	    Darker = true,
-	    Visible = false
-	})
-	FireRate = Killaura:CreateSlider({
-	    Name = "Fire rate",
-	    Suffix = "seconds",
-	    Min = 0,
-	    Max = 2,
-	    Decimal = 100,
-	    Darker = true,
-	    Visible = false,
-	    Default = 0.05
+	FireRate = FastHits:CreateSlider({
+		Name = "Fire rate",
+		Suffix = "seconds",
+		Min = 0,
+		Max = 2,
+		Decimal = 100,
+		Darker = true,
+		Default = 0.05
 	})
 	ContinueSwing = Killaura:CreateTwoSlider({
-	    Name = "Continue swing",
-	    Min = 0,
-	    Max = 1000,
-	    DefaultMin = 0,
-	    DefaultMax = 0,
-	    Darker = true,
-	    Tooltip = "Keeps playing the swing animation for a random amount of ms after you stop targeting"
+		Name = "Continue swing",
+		Min = 0,
+		Max = 1000,
+		DefaultMin = 0,
+		DefaultMax = 0,
+		Darker = true,
+		Tooltip = 'Keeps the swing animation going briefly after you stop targeting'
 	})
 	Mouse = Killaura:CreateToggle({Name = "Require mouse down"})
 	AFKCheck = Killaura:CreateToggle({
-	    Name = "AFK check",
-	    Tooltip = "Stops attacking once you have not touched your mouse or keyboard for 30 seconds"
+		Name = "AFK check",
+		Tooltip = 'Stops attacking while you are away from your keyboard and mouse'
 	})
 	Attackable = Killaura:CreateToggle({Name = "Attackable check"})
 	Swing = Killaura:CreateToggle({Name = "No Swing"})
 	GUI = Killaura:CreateToggle({Name = "GUI check"})
-	Killaura:CreateToggle({
-	    Name = "Show target",
-	    Function = function(Callback: boolean)
-	        if vape.ThreadFix then
-	            setthreadidentity(8)
-	        end
-	        BoxSwingColor.Object.Visible = Callback
-	        if vape.ThreadFix then
-	            setthreadidentity(8)
-	        end
-	        BoxAttackColor.Object.Visible = Callback
-	        if vape.ThreadFix then
-	            setthreadidentity(8)
-	        end
-	        BoxAttackTween.Object.Visible = Callback
-	        if vape.ThreadFix then
-	            setthreadidentity(8)
-	        end
-	        BoxAttackSpeed.Object.Visible = Callback
-	        if vape.ThreadFix then
-	            setthreadidentity(8)
-	        end
-	        BoxAttackSpeedEnd.Object.Visible = Callback
-	        if Callback then
-	            for i: number = 1, 10 do
-	                if vape.ThreadFix then
-	                    setthreadidentity(8)
-	                end
-	                local Box: BoxHandleAdornment = Instance.new("BoxHandleAdornment")
-	                if vape.ThreadFix then
-	                    setthreadidentity(8)
-	                end
-	                Box.Adornee = nil
-	                if vape.ThreadFix then
-	                    setthreadidentity(8)
-	                end
-	                Box.AlwaysOnTop = true
-	                if vape.ThreadFix then
-	                    setthreadidentity(8)
-	                end
-	                Box.Size = Vector3.zero
-	                if vape.ThreadFix then
-	                    setthreadidentity(8)
-	                end
-	                Box.CFrame = CFrame.new(0, -0.5, 0)
-	                if vape.ThreadFix then
-	                    setthreadidentity(8)
-	                end
-	                Box.ZIndex = 0
-	                if vape.ThreadFix then
-	                    setthreadidentity(8)
-	                end
-	                Box.Parent = vape.gui
-	                Boxes[i] = Box
-	            end
-	        else
-	            for _, v: BoxHandleAdornment in Boxes do
-	                if vape.ThreadFix then
-	                    setthreadidentity(8)
-	                end
-	                v:Destroy()
-	            end
-	            table.clear(Boxes)
-	        end
-	    end
+	local ShowTargetGroup = Killaura:CreateGroup({
+		Name = "Show target",
+		Function = function(Callback: boolean)
+			if vape.ThreadFix then
+				setthreadidentity(8)
+			end
+			if vape.ThreadFix then
+				setthreadidentity(8)
+			end
+			if vape.ThreadFix then
+				setthreadidentity(8)
+			end
+			if vape.ThreadFix then
+				setthreadidentity(8)
+			end
+			if vape.ThreadFix then
+				setthreadidentity(8)
+			end
+			if Callback then
+				for i: number = 1, 10 do
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					local Box: BoxHandleAdornment = Instance.new("BoxHandleAdornment")
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					Box.Adornee = nil
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					Box.AlwaysOnTop = true
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					Box.Size = Vector3.zero
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					Box.CFrame = CFrame.new(0, -0.5, 0)
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					Box.ZIndex = 0
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					Box.Parent = vape.gui
+					Boxes[i] = Box
+				end
+			else
+				for _, v: BoxHandleAdornment in Boxes do
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					v:Destroy()
+				end
+				table.clear(Boxes)
+			end
+		end
 	})
 	local EasingStyles: {string} = {"Bounce"}
 	for _, v: EnumItem in Enum.EasingStyle:GetEnumItems() do
-	    if not table.find(EasingStyles, v.Name) then
-	        table.insert(EasingStyles, v.Name)
-	    end
+		if not table.find(EasingStyles, v.Name) then
+			table.insert(EasingStyles, v.Name)
+		end
 	end
-	BoxAttackTween = Killaura:CreateDropdown({
-	    Name = "Box Animation",
-	    List = EasingStyles,
-	    Darker = true,
-	    Visible = false
+	BoxAttackTween = ShowTargetGroup:CreateDropdown({
+		Name = "Box Animation",
+		List = EasingStyles,
+		Darker = true
 	})
-	BoxAttackSpeed = Killaura:CreateSlider({
-	    Name = "Start Animation Speed",
-	    Min = 0,
-	    Max = 10,
-	    Default = 0.9,
-	    Decimal = 30,
-	    Darker = true,
-	    Visible = false
+	BoxAttackSpeed = ShowTargetGroup:CreateSlider({
+		Name = "Start Animation Speed",
+		Min = 0,
+		Max = 10,
+		Default = 0.9,
+		Decimal = 30,
+		Darker = true
 	})
-	BoxAttackSpeedEnd = Killaura:CreateSlider({
-	    Name = "End Animation Speed",
-	    Min = 0,
-	    Max = 10,
-	    Default = 1.4,
-	    Decimal = 30,
-	    Darker = true,
-	    Visible = false
+	BoxAttackSpeedEnd = ShowTargetGroup:CreateSlider({
+		Name = "End Animation Speed",
+		Min = 0,
+		Max = 10,
+		Default = 1.4,
+		Decimal = 30,
+		Darker = true
 	})
-	BoxSwingColor = Killaura:CreateColorSlider({
-	    Name = "Target Color",
-	    Darker = true,
-	    DefaultHue = 0.6,
-	    DefaultOpacity = 0.5,
-	    Visible = false
+	BoxSwingColor = ShowTargetGroup:CreateColorSlider({
+		Name = "Target Color",
+		Darker = true,
+		DefaultHue = 0.6,
+		DefaultOpacity = 0.5
 	})
-	BoxAttackColor = Killaura:CreateColorSlider({
-	    Name = "Attack Color",
-	    Darker = true,
-	    DefaultOpacity = 0.5,
-	    Visible = false
+	BoxAttackColor = ShowTargetGroup:CreateColorSlider({
+		Name = "Attack Color",
+		Darker = true,
+		DefaultOpacity = 0.5
 	})
-	Killaura:CreateToggle({
-	    Name = "Target particles",
-	    Function = function(Callback: boolean)
-	        if vape.ThreadFix then
-	            setthreadidentity(8)
-	        end
-	        ParticleTexture.Object.Visible = Callback
-	        ParticleColor1.Object.Visible = Callback
-	        ParticleColor2.Object.Visible = Callback
-	        ParticleSize.Object.Visible = Callback
-	        if Callback then
-	            for i: number = 1, 10 do
-	                if vape.ThreadFix then
-	                    setthreadidentity(8)
-	                end
-	                local Part: Part = Instance.new("Part")
-	                if vape.ThreadFix then
-	                    setthreadidentity(8)
-	                end
-	                Part.Size = Vector3.new(2, 4, 2)
-	                Part.Anchored = true
-	                Part.CanCollide = false
-	                Part.Transparency = 1
-	                Part.CanQuery = false
-	                if vape.ThreadFix then
-	                    setthreadidentity(8)
-	                end
-	                Part.Parent = Killaura.Enabled and Camera or nil
-	                if vape.ThreadFix then
-	                    setthreadidentity(8)
-	                end
-	                local Emitter: ParticleEmitter = Instance.new("ParticleEmitter")
-	                if vape.ThreadFix then
-	                    setthreadidentity(8)
-	                end
-	                Emitter.Brightness = 1.5
-	                Emitter.Size = NumberSequence.new(ParticleSize.Value)
-	                Emitter.Shape = Enum.ParticleEmitterShape.Sphere
-	                Emitter.Texture = ParticleTexture.Value
-	                Emitter.Transparency = NumberSequence.new(0)
-	                Emitter.Lifetime = NumberRange.new(0.4)
-	                Emitter.Speed = NumberRange.new(16)
-	                Emitter.Rate = 128
-	                Emitter.Drag = 16
-	                Emitter.ShapePartial = 1
-	                Emitter.Color = ColorSequence.new({
-	                    ColorSequenceKeypoint.new(0, Color3.fromHSV(ParticleColor1.Hue, ParticleColor1.Sat, ParticleColor1.Value)),
-	                    ColorSequenceKeypoint.new(1, Color3.fromHSV(ParticleColor2.Hue, ParticleColor2.Sat, ParticleColor2.Value))
-	                })
-	                if vape.ThreadFix then
-	                    setthreadidentity(8)
-	                end
-	                Emitter.Parent = Part
-	                Particles[i] = Part
-	            end
-	        else
-	            for _, v: Part in Particles do
-	                if vape.ThreadFix then
-	                    setthreadidentity(8)
-	                end
-	                v:Destroy()
-	            end
-	            table.clear(Particles)
-	        end
-	    end
+	local TargetParticlesGroup = Killaura:CreateGroup({
+		Name = "Target particles",
+		Function = function(Callback: boolean)
+			if vape.ThreadFix then
+				setthreadidentity(8)
+			end
+			if Callback then
+				for i: number = 1, 10 do
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					local Part: Part = Instance.new("Part")
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					Part.Size = Vector3.new(2, 4, 2)
+					Part.Anchored = true
+					Part.CanCollide = false
+					Part.Transparency = 1
+					Part.CanQuery = false
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					Part.Parent = Killaura.Enabled and Camera or nil
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					local Emitter: ParticleEmitter = Instance.new("ParticleEmitter")
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					Emitter.Brightness = 1.5
+					Emitter.Size = NumberSequence.new(ParticleSize.Value)
+					Emitter.Shape = Enum.ParticleEmitterShape.Sphere
+					Emitter.Texture = ParticleTexture.Value
+					Emitter.Transparency = NumberSequence.new(0)
+					Emitter.Lifetime = NumberRange.new(0.4)
+					Emitter.Speed = NumberRange.new(16)
+					Emitter.Rate = 128
+					Emitter.Drag = 16
+					Emitter.ShapePartial = 1
+					Emitter.Color = ColorSequence.new({
+						ColorSequenceKeypoint.new(0, Color3.fromHSV(ParticleColor1.Hue, ParticleColor1.Sat, ParticleColor1.Value)),
+						ColorSequenceKeypoint.new(1, Color3.fromHSV(ParticleColor2.Hue, ParticleColor2.Sat, ParticleColor2.Value))
+					})
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					Emitter.Parent = Part
+					Particles[i] = Part
+				end
+			else
+				for _, v: Part in Particles do
+					if vape.ThreadFix then
+						setthreadidentity(8)
+					end
+					v:Destroy()
+				end
+				table.clear(Particles)
+			end
+		end
 	})
-	ParticleTexture = Killaura:CreateTextBox({
-	    Name = "Texture",
-	    Function = function()
-	        for _, v: Part in Particles do
-	            if vape.ThreadFix then
-	                setthreadidentity(8)
-	            end
-	            v.ParticleEmitter.Texture = ParticleTexture.Value
-	        end
-	    end,
-	    Default = "rbxassetid://14736249347",
-	    Darker = true,
-	    Visible = false
+	ParticleTexture = TargetParticlesGroup:CreateTextBox({
+		Name = "Texture",
+		Function = function()
+			for _, v: Part in Particles do
+				if vape.ThreadFix then
+					setthreadidentity(8)
+				end
+				v.ParticleEmitter.Texture = ParticleTexture.Value
+			end
+		end,
+		Default = "rbxassetid://14736249347",
+		Darker = true
 	})
-	ParticleColor1 = Killaura:CreateColorSlider({
-	    Name = "Color Begin",
-	    Function = function(Hue: number, Sat: number, Val: number)
-	        for _, v: Part in Particles do
-	            if vape.ThreadFix then
-	                setthreadidentity(8)
-	            end
-	            v.ParticleEmitter.Color = ColorSequence.new({
-	                ColorSequenceKeypoint.new(0, Color3.fromHSV(Hue, Sat, Val)),
-	                ColorSequenceKeypoint.new(1, Color3.fromHSV(ParticleColor2.Hue, ParticleColor2.Sat, ParticleColor2.Value))
-	            })
-	        end
-	    end,
-	    Darker = true,
-	    Visible = false
+	ParticleColor1 = TargetParticlesGroup:CreateColorSlider({
+		Name = "Color Begin",
+		Function = function(Hue: number, Sat: number, Val: number)
+			for _, v: Part in Particles do
+				if vape.ThreadFix then
+					setthreadidentity(8)
+				end
+				v.ParticleEmitter.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, Color3.fromHSV(Hue, Sat, Val)),
+					ColorSequenceKeypoint.new(1, Color3.fromHSV(ParticleColor2.Hue, ParticleColor2.Sat, ParticleColor2.Value))
+				})
+			end
+		end,
+		Darker = true
 	})
-	ParticleColor2 = Killaura:CreateColorSlider({
-	    Name = "Color End",
-	    Function = function(Hue: number, Sat: number, Val: number)
-	        for _, v: Part in Particles do
-	            if vape.ThreadFix then
-	                setthreadidentity(8)
-	            end
-	            v.ParticleEmitter.Color = ColorSequence.new({
-	                ColorSequenceKeypoint.new(0, Color3.fromHSV(ParticleColor1.Hue, ParticleColor1.Sat, ParticleColor1.Value)),
-	                ColorSequenceKeypoint.new(1, Color3.fromHSV(Hue, Sat, Val))
-	            })
-	        end
-	    end,
-	    Darker = true,
-	    Visible = false
+	ParticleColor2 = TargetParticlesGroup:CreateColorSlider({
+		Name = "Color End",
+		Function = function(Hue: number, Sat: number, Val: number)
+			for _, v: Part in Particles do
+				if vape.ThreadFix then
+					setthreadidentity(8)
+				end
+				v.ParticleEmitter.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, Color3.fromHSV(ParticleColor1.Hue, ParticleColor1.Sat, ParticleColor1.Value)),
+					ColorSequenceKeypoint.new(1, Color3.fromHSV(Hue, Sat, Val))
+				})
+			end
+		end,
+		Darker = true
 	})
-	ParticleSize = Killaura:CreateSlider({
-	    Name = "Size",
-	    Min = 0,
-	    Max = 1,
-	    Decimal = 100,
-	    Function = function(Val: number)
-	        for _, v: Part in Particles do
-	            if vape.ThreadFix then
-	                setthreadidentity(8)
-	            end
-	            v.ParticleEmitter.Size = NumberSequence.new(Val)
-	        end
-	    end,
-	    Default = 0.2,
-	    Darker = true,
-	    Visible = false
+	ParticleSize = TargetParticlesGroup:CreateSlider({
+		Name = "Size",
+		Min = 0,
+		Max = 1,
+		Decimal = 100,
+		Function = function(Val: number)
+			for _, v: Part in Particles do
+				if vape.ThreadFix then
+					setthreadidentity(8)
+				end
+				v.ParticleEmitter.Size = NumberSequence.new(Val)
+			end
+		end,
+		Default = 0.2,
+		Darker = true
 	})
 	Face = Killaura:CreateToggle({Name = "Face target"})
-	Animation = Killaura:CreateToggle({
-	    Name = "Custom Animation",
-	    Function = function(Callback: boolean)
-	        if vape.ThreadFix then
-	            setthreadidentity(8)
-	        end
-	        AnimationMode.Object.Visible = Callback
-	        AnimationTween.Object.Visible = Callback
-	        AnimationSpeed.Object.Visible = Callback
-	        if Killaura.Enabled then
-	            Killaura:Toggle()
-	            Killaura:Toggle()
-	        end
-	    end
+	Animation = Killaura:CreateGroup({
+		Name = "Custom Animation",
+		Function = function(Callback: boolean)
+			if vape.ThreadFix then
+				setthreadidentity(8)
+			end
+			if Killaura.Enabled then
+				Killaura:Toggle()
+				Killaura:Toggle()
+			end
+		end
 	})
 	local AnimationNames: {string} = {}
 	for Name: string in Animations do
-	    if Name ~= "Normal" then
-	        table.insert(AnimationNames, Name)
-	    end
+		if Name ~= "Normal" then
+			table.insert(AnimationNames, Name)
+		end
 	end
 	table.sort(AnimationNames)
 	table.insert(AnimationNames, 1, "Normal")
-	AnimationMode = Killaura:CreateDropdown({
-	    Name = "Animation Mode",
-	    List = AnimationNames,
-	    Darker = true,
-	    Visible = false
+	AnimationMode = Animation:CreateDropdown({
+		Name = "Animation Mode",
+		List = AnimationNames,
+		Darker = true
 	})
-	AnimationSpeed = Killaura:CreateSlider({
-	    Name = "Animation Speed",
-	    Min = 0,
-	    Max = 2,
-	    Default = 1,
-	    Decimal = 10,
-	    Darker = true,
-	    Visible = false
+	AnimationSpeed = Animation:CreateSlider({
+		Name = "Animation Speed",
+		Min = 0,
+		Max = 2,
+		Default = 1,
+		Decimal = 10,
+		Darker = true
 	})
-	AnimationTween = Killaura:CreateToggle({
-	    Name = "No Tween",
-	    Darker = true,
-	    Visible = false
+	AnimationTween = Animation:CreateToggle({
+		Name = "No Tween",
+		Darker = true
 	})
 	Limit = Killaura:CreateToggle({
-	    Name = "Limit to items",
-	    Function = function(Callback: boolean)
-	        if UserInputService.TouchEnabled and Killaura.Enabled then
-	            pcall(function()
-	                LocalPlayer.PlayerGui.MobileUI["2"].Visible = Callback
-	            end)
-	        end
-	    end,
-	    Tooltip = "Only attacks when the sword is held"
+		Name = "Limit to items",
+		Function = function(Callback: boolean)
+			if UserInputService.TouchEnabled and Killaura.Enabled then
+				pcall(function()
+					LocalPlayer.PlayerGui.MobileUI["2"].Visible = Callback
+				end)
+			end
+		end,
+		Tooltip = 'Only works while holding the item it uses'
 	})
 	LegitAura = Killaura:CreateToggle({
-	    Name = "Swing only",
-	    Tooltip = "Only attacks while swinging manually"
+		Name = "Swing only",
+		Tooltip = "Only attacks while swinging manually"
 	})
 end)
 
