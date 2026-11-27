@@ -138,8 +138,9 @@ if not shared.ElevateDeveloper then
             writefile(CommitPath, Version)
             shared.updated = CachedVersion ~= "" and CachedVersion or nil
         else
-            warn(`ElevateV4 update incomplete ({#Failed} file(s)); the previous cached build was kept where possible.`)
+            warn(`ElevateV4 update incomplete ({#Failed} file(s)).`)
             warn(table.concat(Failed, ", "))
+            error("ElevateV4 update stopped: some files could not be downloaded. The old cached build will not be launched; rerun the GitHub init loader.")
         end
     end
 end
