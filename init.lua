@@ -10,7 +10,7 @@ local Directory = shared.ElevateDeveloper and "elevatev4private" or "elevatev4"
 local RawBase = `https://raw.githubusercontent.com/{Owner}/{Repository}/{Branch}/`
 
 -- Replace with your worker URL from: npx wrangler deploy
-local AUTH_URL = "  https://keyauth.weikauth.workers.dev"
+local AUTH_URL = "https://keyauth.weikauth.workers.dev/auth"
 
 if not game:IsLoaded() then
     game.Loaded:Wait()
