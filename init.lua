@@ -67,12 +67,6 @@ if not shared.ElevateDeveloper then
 
     if IsNewUser or CachedVersion ~= Version then
         local Failed = {}
-        local Queue = {}
-        local MaxConcurrentDownloads = 8
-        local MaxAttempts = 2
-
-        -- Prepare all folders before starting workers so simultaneous downloads
-        -- cannot race while creating the same parent directory.
         for _, RelativePath in Manifest.files do
             if type(RelativePath) ~= "string" or RelativePath == "" then
                 continue
@@ -83,54 +77,15 @@ if not shared.ElevateDeveloper then
 
             local Target = `{Directory}/{RelativePath}`
             EnsureParent(Target)
-            table.insert(Queue, {Path = RelativePath, Target = Target})
-        end
-
-        local NextIndex = 0
-        local Completed = 0
-
-        local function DownloadEntry(Entry)
-            for Attempt = 1, MaxAttempts do
-                local Ok, Contents = pcall(Fetch, Entry.Path)
-                if Ok and type(Contents) == "string" then
-                    if Contents == "404: Not Found" then
-                        return false
-                    end
-
-                    local WriteOk = pcall(writefile, Entry.Target, Contents)
-                    return WriteOk
+            local Ok, Contents = pcall(Fetch, RelativePath)
+            if Ok and type(Contents) == "string" and Contents ~= "404: Not Found" then
+                local WriteOk = pcall(writefile, Target, Contents)
+                if not WriteOk then
+                    table.insert(Failed, RelativePath)
                 end
-
-                if Attempt < MaxAttempts then
-                    task.wait(0.35 * Attempt)
-                end
+            else
+                table.insert(Failed, RelativePath)
             end
-            return false
-        end
-
-        local WorkerCount = math.min(MaxConcurrentDownloads, #Queue)
-        for _ = 1, WorkerCount do
-            task.spawn(function()
-                while true do
-                    -- Luau tasks are cooperative; this index update does not yield,
-                    -- so each queued path is claimed by exactly one worker.
-                    NextIndex += 1
-                    local Entry = Queue[NextIndex]
-                    if not Entry then
-                        break
-                    end
-
-                    if not DownloadEntry(Entry) then
-                        table.insert(Failed, Entry.Path)
-                    end
-                    Completed += 1
-                end
-            end)
-        end
-
-        -- Do not launch the client until every queued file has completed.
-        while Completed < #Queue do
-            task.wait()
         end
 
         if #Failed == 0 then
@@ -138,9 +93,8 @@ if not shared.ElevateDeveloper then
             writefile(CommitPath, Version)
             shared.updated = CachedVersion ~= "" and CachedVersion or nil
         else
-            warn(`ElevateV4 update incomplete ({#Failed} file(s)).`)
+            warn(`ElevateV4 update incomplete ({#Failed} file(s)); the previous cached build was kept where possible.`)
             warn(table.concat(Failed, ", "))
-            error("ElevateV4 update stopped: some files could not be downloaded. The old cached build will not be launched; rerun the GitHub init loader.")
         end
     end
 end

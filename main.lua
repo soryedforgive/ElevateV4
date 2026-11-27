@@ -208,38 +208,9 @@ getgenv().used_init = true
 
 if not shared.ElevateIndependent then
     loadstring(DownloadFile(`{Directory}/games/universal.lua`), "universal")(License)
-
-    local GamePath = `{Directory}/games/{game.PlaceId}.lua`
-    if isfile(GamePath) then
-        local GameSource = readfile(GamePath)
-
-        -- The BedWars Killaura compatibility shim must exist in the cached file.
-        -- If an older cache is found, refresh this one module directly from GitHub
-        -- instead of silently executing the stale copy.
-        if game.PlaceId == 6872274481 and not string.find(GameSource, "Killaura.CreateGroup = function", 1, true) then
-            if shared.ElevateDeveloper then
-                error("ElevateV4: stale BedWars module found in elevatev4private. Sync the private development folder with the current GitHub source.")
-            end
-
-            local RefreshOk, FreshSource = pcall(function()
-                return game:HttpGet("https://raw.githubusercontent.com/soryedforgive/ElevateV4/main/games/6872274481.lua", true)
-            end)
-            if not RefreshOk or type(FreshSource) ~= "string" or FreshSource == "404: Not Found" or not string.find(FreshSource, "Killaura.CreateGroup = function", 1, true) then
-                error("ElevateV4: the BedWars module cache is stale and GitHub refresh failed. Rerun the init loader after checking repository access.")
-            end
-
-            writefile(GamePath, FreshSource)
-            GameSource = FreshSource
-            vape:CreateNotification("Elevate", "Refreshed the outdated BedWars module cache.", 5, "info")
-        end
-
-        local GameChunk, GameError = loadstring(GameSource, tostring(game.PlaceId))
-        if not GameChunk then
-            error(`ElevateV4: BedWars module compile failed: {tostring(GameError)}`)
-        end
-        GameChunk(License)
+    if isfile(`{Directory}/games/{game.PlaceId}.lua`) then
+        loadstring(readfile(`{Directory}/games/{game.PlaceId}.lua`), tostring(game.PlaceId))(License)
     end
-
     loadstring(DownloadFile(`{Directory}/libraries/main.lua`), "main")(License)
     FinishLoading()
 else
