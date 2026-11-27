@@ -8143,7 +8143,58 @@ Run(function()
 		end,
 		Tooltip = 'Attacks players around you without aiming'
 	})
-	
+
+	-- ElevateV4's GUI API does not expose Vape's legacy CreateGroup or
+	-- CreateMultiDropdown methods. Adapt those calls to supported controls.
+	Killaura.CreateGroup = function(Module, Properties)
+		local GroupToggle = Module:CreateToggle({
+			Name = Properties.Name or "Options",
+			Default = Properties.Default == true,
+			Tooltip = Properties.Tooltip,
+			Function = Properties.Function
+		})
+		local Group = {Toggle = GroupToggle}
+		return setmetatable(Group, {
+			__index = function(_, Key)
+				if Key == "Enabled" then
+					return GroupToggle.Enabled
+				end
+				if type(Key) == "string" and Key:sub(1, 6) == "Create" then
+					local Constructor = Module[Key]
+					if type(Constructor) == "function" then
+						return function(_, OptionProperties)
+							return Constructor(Module, OptionProperties)
+						end
+					end
+				end
+			end
+		})
+	end
+
+	Killaura.CreateMultiDropdown = function(Module, Properties)
+		local Choices = type(Properties.List) == "table" and table.clone(Properties.List) or {}
+		local Defaults = type(Properties.Default) == "table" and table.clone(Properties.Default) or {}
+		local Control = Module:CreateTextList({
+			Name = Properties.Name or "Options",
+			Tooltip = Properties.Tooltip,
+			Darker = Properties.Darker,
+			Color = Properties.Color,
+			Function = Properties.Function
+		})
+		Control.List = Choices
+		table.clear(Control.ListEnabled)
+		for _, Entry in Defaults do
+			if table.find(Control.List, Entry) and not table.find(Control.ListEnabled, Entry) then
+				table.insert(Control.ListEnabled, Entry)
+			end
+		end
+		Control:ChangeValue()
+		function Control:Has(Entry)
+			return table.find(self.ListEnabled, Entry) ~= nil
+		end
+		return Control
+	end
+
 	Targets = Killaura:CreateTargets({
 		Players = true,
 		NPCs = true
