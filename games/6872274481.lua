@@ -7945,8 +7945,9 @@ Run(function()
 	                                end
 	                                local Remaining: number = Deadline - tick()
 	                                if Precise and not Waiting and Remaining > 0 and Remaining < math.min(Locked and math.max(FrameTime, FrameStep) or math.min(FrameTime, FrameStep), 0.25) then
-	                                    local Finish: number = os.clock() + Remaining
-	                                    repeat until os.clock() >= Finish
+	                                    -- Yield to Roblox instead of spinning on the client thread.
+	                                    -- The next loop iteration re-checks the deadline without consuming a full CPU core.
+	                                    task.wait(Remaining)
 	                                end
 	                                if tick() >= Deadline then
 	                                    local CurrentRoot: BasePart? = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart

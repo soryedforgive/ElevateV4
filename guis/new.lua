@@ -8683,7 +8683,7 @@ Components = {
 		AddDragHandler(Window)
 		local Logo: ImageLabel = Instance.new("ImageLabel")
 		Logo.BackgroundTransparency = 1
-		Logo.Image = GetVapeAsset(`{vape.Directory}/assets/new/elevate_logo_mini.png`)
+		Logo.Image = GetVapeAsset(`{vape.Directory}/assets/new/elevate_logo.png`)
 		Logo.ImageColor3 = select(3, UIPallet.Main:ToHSV()) > 0.5 and UIPallet.Text or Color3.new(1, 1, 1)
 		Logo.Name = "VapeLogo"
 		Logo.Position = UDim2.fromOffset(12, 11)
