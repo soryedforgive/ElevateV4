@@ -67,6 +67,7 @@ if not shared.ElevateDeveloper then
 
     if IsNewUser or CachedVersion ~= Version then
         local Failed = {}
+        local Queue = {}
         for _, RelativePath in Manifest.files do
             if type(RelativePath) ~= "string" or RelativePath == "" then
                 continue
@@ -75,17 +76,54 @@ if not shared.ElevateDeveloper then
                 continue
             end
 
+            table.insert(Queue, RelativePath)
             local Target = `{Directory}/{RelativePath}`
-            EnsureParent(Target)
-            local Ok, Contents = pcall(Fetch, RelativePath)
-            if Ok and type(Contents) == "string" and Contents ~= "404: Not Found" then
-                local WriteOk = pcall(writefile, Target, Contents)
-                if not WriteOk then
-                    table.insert(Failed, RelativePath)
-                end
-            else
-                table.insert(Failed, RelativePath)
+            local Parent = Target:match("^(.*)/[^/]+$")
+            if Parent then
+                EnsureFolder(Parent)
             end
+        end
+
+        local NextIndex, Completed = 1, 0
+        local WorkerCount = math.min(8, #Queue)
+        local function DownloadOne(RelativePath)
+            local Target = `{Directory}/{RelativePath}`
+            for Attempt = 1, 3 do
+                local Ok, Contents = pcall(Fetch, RelativePath)
+                if Ok and type(Contents) == "string" and Contents ~= "404: Not Found" then
+                    local WriteOk = pcall(writefile, Target, Contents)
+                    if WriteOk then
+                        return true
+                    end
+                end
+                if Attempt < 3 then
+                    task.wait(0.2 * Attempt)
+                end
+            end
+            return false
+        end
+
+        for _ = 1, WorkerCount do
+            task.spawn(function()
+                while true do
+                    local Index = NextIndex
+                    NextIndex += 1
+                    local RelativePath = Queue[Index]
+                    if not RelativePath then
+                        break
+                    end
+
+                    local Ok, Success = pcall(DownloadOne, RelativePath)
+                    if not Ok or not Success then
+                        table.insert(Failed, RelativePath)
+                    end
+                    Completed += 1
+                end
+            end)
+        end
+
+        while Completed < #Queue do
+            task.wait()
         end
 
         if #Failed == 0 then

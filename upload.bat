@@ -24,6 +24,14 @@ if errorlevel 1 (
     exit /b 1
 )
 
+set "PROJECT_ROOT=%SOURCE%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$root = $env:PROJECT_ROOT; $files = Get-ChildItem -LiteralPath $root -Recurse -File | Where-Object { $_.FullName -notmatch '[\\/]\.git([\\/]|$)' -and $_.Name -ne 'manifest.json' -and $_.Name -ne 'upload.bat' -and $_.Name -ne 'README.md' -and $_.Name -ne '.gitignore' -and $_.Name -ne 'version.txt' -and $_.Extension -ne '.zip' -and $_.Extension -ne '.log' } | ForEach-Object { $_.FullName.Substring($root.Length + 1).Replace('\','/') } | Sort-Object; $json = ConvertTo-Json -InputObject @{ files = @($files) } -Compress -Depth 4; [System.IO.File]::WriteAllText((Join-Path $root 'manifest.json'), $json, ([System.Text.UTF8Encoding]::new($false)))"
+if errorlevel 1 (
+    echo [ERROR] Could not regenerate manifest.json.
+    pause
+    exit /b 1
+)
+
 if exist "%WORK%" rmdir /s /q "%WORK%"
 echo [INFO] Cloning %REPO_URL% ...
 git clone "%REPO_URL%" "%WORK%"

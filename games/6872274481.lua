@@ -4185,11 +4185,11 @@ Run(function()
 	    Name = "Hitreg",
 	    Min = 1,
 	    Max = 36,
-	    Default = 35,
+	    Default = 36,
 	    Suffix = function(Val: number)
 	        return Val == 1 and "hit / 10s" or "hits / 10s"
 	    end,
-	    Tooltip = "Spacing your manual and autoclicker hits fire at, 35 is the killaura spacing (fury potion still speeds it up)"
+	    Tooltip = "Target spacing for manual and autoclicker swings; actual confirmations still depend on server cooldown and network conditions."
 	})
 end)
 
@@ -4757,8 +4757,8 @@ Run(function()
 	local LastEffect, LastAttack, LastSwing, OldSwing, SwingHook = 0, 0, 0, nil, nil
 	local TinkerSwing: number = 0
 	local Session = nil
-	local HitBudget, HitSpacing, GapFloor = 0.18, 10/36, 10/36
-	local SafeSpacing, SafeFloor, HighSpacing, HighFloor = 0.285, 0.270, 10 / 36, 10 / 36
+	local HitBudget, HitSpacing, GapFloor = 0.2, 0.296, 0.296
+	local SafeSpacing, SafeFloor, HighSpacing, HighFloor = 0.296, 0.296, 10 / 36, 10 / 36
 	local WeaponSpacing: {[number]: number} = {
 	    [0.21] = 0.229,
 	    [0.25] = 0.249,
@@ -5027,9 +5027,8 @@ Run(function()
 	                                end
 	                                local Remaining: number = math.max(LastHit + LockFloor - tick(), LockTarget - os.clock())
 	                                if Remaining > 0 and Remaining < math.min(math.max(LockFrame, 0.005), 0.25) then
-	                                    local Finish: number = os.clock() + Remaining
-	                                    repeat until os.clock() >= Finish
-	                                    Remaining = 0
+	                                	task.wait(Remaining)
+	                                	Remaining = math.max(LastHit + LockFloor - tick(), LockTarget - os.clock())
 	                                end
 	                                Ready = Remaining <= 0
 	                            end
@@ -5040,7 +5039,7 @@ Run(function()
 	                                local SelfPosition: Vector3 = LocalPosition + Direction * math.max(Delta.Magnitude - (getReach(Sword.tool) - 0.001), 0)
 	                                bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
 	                                LastAttack = tick()
-	                                SwingCooldown = tick() + math.max(HitDelay or SwingDelay or 0.028, 0.028))
+	                                SwingCooldown = math.max(SwingCooldown + HitDelay, tick())
 	                                LastHit = tick()
 	
 	                                if (not Airborne) or RandomGenerator:NextNumber(0, 100) <= AirHits:GetRandomValue() then
@@ -7223,8 +7222,8 @@ Run(function()
 	    LockNudge = 0.0005,
 	    LockPhase = 0.0085,
 	    LockEdge = 0.0035,
-	    LockFloor = 0.08,
-	    LockGhost = 0.04,
+	    LockFloor = 0.25,
+	    LockGhost = 0.3,
 	    LockPing = 0.2
 	}
 	local FixedSpeeds: {[string]: number} = {
@@ -7251,7 +7250,7 @@ Run(function()
 	local ProjectileRemote = bedwars.Handler:Get("ProjectileFire")
 	local FastHitPending, LastShot = nil, 0
 	local ArrivalFloor: number = SwordTiming.ArrivalFloor
-	local HitBudget, HitFloor, GapFloor = 0.18, SwordTiming.HitFloor, SwordTiming.GapFloor
+	local HitBudget, HitFloor, GapFloor = 0.2, SwordTiming.HitFloor, SwordTiming.GapFloor
 	local CleanFloor: number = SwordTiming.HighSpacing
 	local TargetLag: number = 0.12
 	local SelfLag: number = 0.09
@@ -7945,8 +7944,8 @@ Run(function()
 	                                end
 	                                local Remaining: number = Deadline - tick()
 	                                if Precise and not Waiting and Remaining > 0 and Remaining < math.min(Locked and math.max(FrameTime, FrameStep) or math.min(FrameTime, FrameStep), 0.25) then
-	                                    local Finish: number = os.clock() + Remaining
-	                                    repeat until os.clock() >= Finish
+	                                	-- Yield to the scheduler instead of busy-waiting on os.clock().
+	                                	task.wait(Remaining)
 	                                end
 	                                if tick() >= Deadline then
 	                                    local CurrentRoot: BasePart? = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
