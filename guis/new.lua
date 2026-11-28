@@ -905,7 +905,9 @@ do
             end)
 
             if not Success or Data == "404: Not Found" then
-                error(Data)
+                -- Don't crash the whole load on a missing asset; skip gracefully.
+                warn(`[Elevate] failed to download {FilePath}: {Data}`)
+                return Callback and Callback("") or ""
             end
 
             if FilePath:find(".lua", 1, true) then
@@ -913,6 +915,14 @@ do
             end
 
             writefile(FilePath, Data)
+            -- Invalidate the asset directory cache so the new file is visible
+            -- on subsequent AssetExists checks without re-listing from disk.
+            if AssetFiles then
+                local Name: string? = FilePath:match("([^/\\]+)$")
+                if Name then
+                    AssetFiles[Name] = true
+                end
+            end
         end
 
         return (Callback or readfile)(FilePath)
@@ -1759,6 +1769,12 @@ function vape:BlurCheck()
 
     if self.ThreadFix then
         RunService:SetRobloxGuiFocused(Enabled)
+    end
+
+    -- Don't create blur effects during initial load while the GUI isn't open.
+    -- Avoids BlurFocus being left enabled from the Blur toggle's Default=true call.
+    if not Enabled and not BlurEffect then
+        return
     end
 
     if not BlurEffect then
