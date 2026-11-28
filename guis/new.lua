@@ -167,9 +167,7 @@ local function FinishLoad()
         return
     end
 
-    -- Always allow saving; profile auto-load is off so CanSave stays true
-    CanSave = true
-    vape.Loaded = true
+    vape.Loaded = CanSave
 
     if SortQueued then
         vape:SortCategories(true)
@@ -180,9 +178,15 @@ local function FinishLoad()
         vape.Downloader = nil
     end
 
-    if NeedsSave then
+    -- Always defer a save flush after load so the first toggle/change persists
+    -- without requiring a second manual save
+    if NeedsSave or CanSave then
         NeedsSave = false
-        vape:Save()
+        task.defer(function()
+            if vape.Loaded then
+                vape:Save()
+            end
+        end)
     end
 
     if not WindowsMounted then
@@ -905,9 +909,7 @@ do
             end)
 
             if not Success or Data == "404: Not Found" then
-                -- Don't crash the whole load on a missing asset; skip gracefully.
-                warn(`[Elevate] failed to download {FilePath}: {Data}`)
-                return Callback and Callback("") or ""
+                error(Data)
             end
 
             if FilePath:find(".lua", 1, true) then
@@ -915,14 +917,6 @@ do
             end
 
             writefile(FilePath, Data)
-            -- Invalidate the asset directory cache so the new file is visible
-            -- on subsequent AssetExists checks without re-listing from disk.
-            if AssetFiles then
-                local Name: string? = FilePath:match("([^/\\]+)$")
-                if Name then
-                    AssetFiles[Name] = true
-                end
-            end
         end
 
         return (Callback or readfile)(FilePath)
@@ -1771,12 +1765,6 @@ function vape:BlurCheck()
         RunService:SetRobloxGuiFocused(Enabled)
     end
 
-    -- Don't create blur effects during initial load while the GUI isn't open.
-    -- Avoids BlurFocus being left enabled from the Blur toggle's Default=true call.
-    if not Enabled and not BlurEffect then
-        return
-    end
-
     if not BlurEffect then
         BlurEffect = Instance.new("BlurEffect")
         BlurEffect.Enabled = false
@@ -1784,7 +1772,6 @@ function vape:BlurCheck()
         BlurEffect.Size = 0
         BlurEffect.Parent = Lighting
         BlurFocus = Instance.new("DepthOfFieldEffect")
-        BlurFocus.Enabled = false
         BlurFocus.FarIntensity = 0
         BlurFocus.InFocusRadius = 0.1
         BlurFocus.Name = RandomString()
@@ -1795,38 +1782,25 @@ function vape:BlurCheck()
         table.insert(self.BlurEffects, BlurFocus)
     end
 
-    -- Only enable blur when the GUI is actually opening; don't unconditionally
-    -- enable it on close since the tween may still be winding down.
-    if Enabled then
-        BlurEffect.Enabled = true
-        BlurFocus.Enabled = true
-    end
+    BlurEffect.Enabled = true
 
     if BlurTween then
         BlurTween:Cancel()
     end
 
-    -- Use a generation counter so stale task.delay callbacks from rapid
-    -- open/close sequences don't fire and wrongly disable an active blur.
-    local CloseGen = os.clock()
     BlurTween = TweenService:Create(BlurEffect, BlurInfo, {
         Size = Enabled and (self.BlurIntensity and self.BlurIntensity.Value or 24) or 0
     })
     BlurTween:Play()
 
     if not Enabled then
-        task.delay(0.31, function()
+        task.delay(0.3, function()
             if self.ThreadFix then
                 setthreadidentity(8)
             end
 
-            -- Only disable if no newer BlurCheck call has run since this close.
-            if BlurEffect and BlurEffect.Size <= 0.5 then
-                BlurEffect.Enabled = false
-            end
-            -- Always disable DepthOfField on close; it has no size to check.
-            if BlurFocus then
-                BlurFocus.Enabled = false
+            if BlurEffect then
+                BlurEffect.Enabled = BlurEffect.Size > 0.5
             end
         end)
     end
@@ -2146,9 +2120,13 @@ local function LoadProfile(self, SkipGui: boolean?, Profile: string?, Generation
         self.Categories.Profiles:ChangeValue("default", true)
     end
 
-    -- Auto config load disabled. Start clean; Save still writes when you save.
-    local MainData = {Categories = {}, Modules = {}, Legit = {}}
-    CanSave = true
+    SaveDefaults(true)
+    local MainData = ReadProfile(self.Profile)
+    if MainData == false then
+        MainData = {Categories = {}, Modules = {}, Legit = {}}
+        self:CreateNotification("Elevate", `Failed to load {self.Profile} profile, saving is off until you fix or delete it`, 15, "alert")
+        CanSave = false
+    end
 
     if MainData then
         for Name: string, Data: any in MainData.Categories do
@@ -2222,7 +2200,7 @@ function vape:Load(SkipGui: boolean?, Profile: string?)
     end
 
     self.Loaded = false
-    -- SaveDefaults() removed: wrote half-baked defaults and forced double-save
+    SaveDefaults()
     LoadFailures = 0
     LoadGeneration += 1
     CanSave = true
@@ -2388,7 +2366,7 @@ local function DeferLoad(Callback: () -> ())
             warn(`[Elevate] failed to run deferred load: {Error}`)
         end
 
-        -- SaveDefaults(true, Existing) disabled: overwrote live settings during deferred load
+        SaveDefaults(true, Existing)
 
         Success, Error = pcall(function()
             for _, Container: any in {vape.Modules, vape.Legit.Modules} do
@@ -2399,11 +2377,7 @@ local function DeferLoad(Callback: () -> ())
                 end
             end
 
-            -- deferred profile reload disabled
-            local MainData = nil
-            if false and vape.Loaded ~= nil then
-                MainData = ReadProfile(vape.Profile)
-            end
+            local MainData = vape.Loaded ~= nil and ReadProfile(vape.Profile)
             if type(MainData) == "table" then
                 LoadNew(vape.Modules, MainData.Modules, Existing)
                 LoadNew(vape.Legit.Modules, MainData.Legit, Existing)
@@ -4376,11 +4350,7 @@ end
 
 function vape:Save(NewProfile: string?)
     if not self.Loaded then
-        -- still allow save after UI is up even if a load flag glitched
-        if not LoadCalled then
-            return
-        end
-        self.Loaded = true
+        return
     end
 
     if self.ThreadFix then
@@ -4565,7 +4535,9 @@ end
 
 function vape:QueueSave()
     if not self.Loaded then
-        if LoadCalled and DeferredLoads > 0 then
+        -- Widen: set NeedsSave whenever load has been called, not just during deferred loads,
+        -- so the first config change after boot always persists without a double save
+        if LoadCalled then
             NeedsSave = true
         end
 

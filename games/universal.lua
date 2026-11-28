@@ -2617,12 +2617,18 @@ Run(function()
 	local Face
 	local Overlay: OverlapParams = OverlapParams.new()
 	Overlay.FilterType = Enum.RaycastFilterType.Include
-	local Particles, Boxes, AttackDelay = {}, {}, tick()
-	
+		local Particles, Boxes, AttackDelay = {}, {}, tick()
+	-- Track last root position to detect movement for consistent hit registration
+	local lastRootPos = Vector3.zero
+	local isMoving = false
+
 	Killaura = vape.Categories.Blatant:CreateModule({
 	    Name = "Killaura",
 	    Function = function(Callback: boolean)
 	        if Callback then
+	            lastRootPos = Entity.character and Entity.character.RootPart
+	                and Entity.character.RootPart.Position or Vector3.zero
+
 	            repeat
 	                local Interest, Tool
 	                if not Mouse.Enabled or UserInputService:IsMouseButtonPressed(0) then
@@ -2631,6 +2637,13 @@ Run(function()
 	                end
 	                local Attacked = {}
 	                if Interest then
+	                    local rootPart = Entity.character.RootPart
+	                    local curPos = rootPart.Position
+
+	                    -- Detect movement each frame to adjust hit registration
+	                    isMoving = (curPos - lastRootPos).Magnitude > 0.01
+	                    lastRootPos = curPos
+
 	                    local Entities = Entity.AllPosition({
 	                        Range = SwingRange.Value,
 	                        Wallcheck = Targets.Walls.Enabled or nil,
@@ -2640,37 +2653,49 @@ Run(function()
 	                        Priority = Targets.Priority.Value,
 	                        Limit = Max.Value
 	                    })
-	
+
 	                    if #Entities > 0 then
-	                        local SelfPosition: Vector3 = Entity.character.RootPart.Position
-	                        local LocalFacing: Vector3 = Entity.character.RootPart.CFrame.LookVector * Vector3.new(1, 0, 1)
-	
+	                        local SelfPosition: Vector3 = rootPart.Position
+	                        local LocalFacing: Vector3 = rootPart.CFrame.LookVector * Vector3.new(1, 0, 1)
+
 	                        for _, v: any in Entities do
 	                            local Delta: Vector3 = (v.RootPart.Position - SelfPosition)
 	                            local Angle: number = math.acos(LocalFacing:Dot((Delta * Vector3.new(1, 0, 1)).Unit))
 	                            if Angle > (math.rad(AngleSlider.Value) / 2) then
 	                                continue
 	                            end
-	
+
 	                            table.insert(Attacked, {
 	                                Entity = v,
 	                                Check = Delta.Magnitude > AttackRange.Value and BoxSwingColor or BoxAttackColor
 	                            })
 	                            TargetInfo.Targets[v] = tick() + 1
-	
+
 	                            if AttackDelay < tick() then
 	                                AttackDelay = tick() + (1 / CPS.GetRandomValue())
 	                                Tool:Activate()
 	                            end
-	
+
 	                            if Lunge.Enabled and Tool.GripUp.X == 0 then
 	                                break
 	                            end
 	                            if Delta.Magnitude > AttackRange.Value then
 	                                continue
 	                            end
-	
+
 	                            Overlay.FilterDescendantsInstances = {v.Character}
+
+	                            -- When moving, also fire at predicted next-frame position to
+	                            -- compensate for physics desync and match standing hit reg
+	                            if isMoving then
+	                                local vel = v.RootPart.AssemblyLinearVelocity
+	                                local predictedCFrame = CFrame.new(v.RootPart.Position + vel * (1 / 60))
+	                                for _, Part: BasePart in workspace:GetPartBoundsInBox(predictedCFrame, Vector3.new(4, 4, 4), Overlay) do
+	                                    firetouchinterest(Interest.Parent, Part, 1)
+	                                    firetouchinterest(Interest.Parent, Part, 0)
+	                                end
+	                            end
+
 	                            for _, Part: BasePart in workspace:GetPartBoundsInBox(v.RootPart.CFrame, Vector3.new(4, 4, 4), Overlay) do
 	                                firetouchinterest(Interest.Parent, Part, 1)
 	                                firetouchinterest(Interest.Parent, Part, 0)
@@ -2678,7 +2703,7 @@ Run(function()
 	                        end
 	                    end
 	                end
-	
+
 	                for i: number, v: BoxHandleAdornment in Boxes do
 	                    v.Adornee = Attacked[i] and Attacked[i].Entity.RootPart or nil
 	                    if v.Adornee then
@@ -2686,24 +2711,24 @@ Run(function()
 	                        v.Transparency = 1 - Attacked[i].Check.Opacity
 	                    end
 	                end
-	
+
 	                for i: number, v: Part in Particles do
 	                    v.Position = Attacked[i] and Attacked[i].Entity.RootPart.Position or Vector3.new(9e9, 9e9, 9e9)
 	                    v.Parent = Attacked[i] and Camera or nil
 	                end
-	
+
 	                if Face.Enabled and Attacked[1] then
 	                    local TargetPosition: Vector3 = Attacked[1].Entity.RootPart.Position * Vector3.new(1, 0, 1)
 	                    Entity.character.RootPart.CFrame = CFrame.lookAt(Entity.character.RootPart.Position, Vector3.new(TargetPosition.X, Entity.character.RootPart.Position.Y + 0.01, TargetPosition.Z))
 	                end
-	
+
 	                task.wait()
 	            until not Killaura.Enabled
 	        else
 	            for _, v: BoxHandleAdornment in Boxes do
 	                v.Adornee = nil
 	            end
-	
+
 	            for _, v: Part in Particles do
 	                v.Parent = nil
 	            end

