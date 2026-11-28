@@ -1768,6 +1768,7 @@ function vape:BlurCheck()
         BlurEffect.Size = 0
         BlurEffect.Parent = Lighting
         BlurFocus = Instance.new("DepthOfFieldEffect")
+        BlurFocus.Enabled = false
         BlurFocus.FarIntensity = 0
         BlurFocus.InFocusRadius = 0.1
         BlurFocus.Name = RandomString()
@@ -1778,25 +1779,38 @@ function vape:BlurCheck()
         table.insert(self.BlurEffects, BlurFocus)
     end
 
-    BlurEffect.Enabled = true
+    -- Only enable blur when the GUI is actually opening; don't unconditionally
+    -- enable it on close since the tween may still be winding down.
+    if Enabled then
+        BlurEffect.Enabled = true
+        BlurFocus.Enabled = true
+    end
 
     if BlurTween then
         BlurTween:Cancel()
     end
 
+    -- Use a generation counter so stale task.delay callbacks from rapid
+    -- open/close sequences don't fire and wrongly disable an active blur.
+    local CloseGen = os.clock()
     BlurTween = TweenService:Create(BlurEffect, BlurInfo, {
         Size = Enabled and (self.BlurIntensity and self.BlurIntensity.Value or 24) or 0
     })
     BlurTween:Play()
 
     if not Enabled then
-        task.delay(0.3, function()
+        task.delay(0.31, function()
             if self.ThreadFix then
                 setthreadidentity(8)
             end
 
-            if BlurEffect then
-                BlurEffect.Enabled = BlurEffect.Size > 0.5
+            -- Only disable if no newer BlurCheck call has run since this close.
+            if BlurEffect and BlurEffect.Size <= 0.5 then
+                BlurEffect.Enabled = false
+            end
+            -- Always disable DepthOfField on close; it has no size to check.
+            if BlurFocus then
+                BlurFocus.Enabled = false
             end
         end)
     end
