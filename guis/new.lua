@@ -167,7 +167,9 @@ local function FinishLoad()
         return
     end
 
-    vape.Loaded = CanSave
+    -- Always allow saving; profile auto-load is off so CanSave stays true
+    CanSave = true
+    vape.Loaded = true
 
     if SortQueued then
         vape:SortCategories(true)
@@ -2114,13 +2116,9 @@ local function LoadProfile(self, SkipGui: boolean?, Profile: string?, Generation
         self.Categories.Profiles:ChangeValue("default", true)
     end
 
-    SaveDefaults(true)
-    local MainData = ReadProfile(self.Profile)
-    if MainData == false then
-        MainData = {Categories = {}, Modules = {}, Legit = {}}
-        self:CreateNotification("Elevate", `Failed to load {self.Profile} profile, saving is off until you fix or delete it`, 15, "alert")
-        CanSave = false
-    end
+    -- Auto config load disabled. Start clean; Save still writes when you save.
+    local MainData = {Categories = {}, Modules = {}, Legit = {}}
+    CanSave = true
 
     if MainData then
         for Name: string, Data: any in MainData.Categories do
@@ -2194,7 +2192,7 @@ function vape:Load(SkipGui: boolean?, Profile: string?)
     end
 
     self.Loaded = false
-    SaveDefaults()
+    -- SaveDefaults() removed: wrote half-baked defaults and forced double-save
     LoadFailures = 0
     LoadGeneration += 1
     CanSave = true
@@ -2360,7 +2358,7 @@ local function DeferLoad(Callback: () -> ())
             warn(`[Elevate] failed to run deferred load: {Error}`)
         end
 
-        SaveDefaults(true, Existing)
+        -- SaveDefaults(true, Existing) disabled: overwrote live settings during deferred load
 
         Success, Error = pcall(function()
             for _, Container: any in {vape.Modules, vape.Legit.Modules} do
@@ -2371,7 +2369,11 @@ local function DeferLoad(Callback: () -> ())
                 end
             end
 
-            local MainData = vape.Loaded ~= nil and ReadProfile(vape.Profile)
+            -- deferred profile reload disabled
+            local MainData = nil
+            if false and vape.Loaded ~= nil then
+                MainData = ReadProfile(vape.Profile)
+            end
             if type(MainData) == "table" then
                 LoadNew(vape.Modules, MainData.Modules, Existing)
                 LoadNew(vape.Legit.Modules, MainData.Legit, Existing)
@@ -4344,7 +4346,11 @@ end
 
 function vape:Save(NewProfile: string?)
     if not self.Loaded then
-        return
+        -- still allow save after UI is up even if a load flag glitched
+        if not LoadCalled then
+            return
+        end
+        self.Loaded = true
     end
 
     if self.ThreadFix then
